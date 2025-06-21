@@ -1,8 +1,18 @@
 package us.talabrek.ultimateskyblock.async;
 
-import org.bukkit.scheduler.BukkitRunnable;
-import us.talabrek.ultimateskyblock.uSkyBlock;
 import dk.lockfuglsang.minecraft.util.TimeUtil;
+import dk.lockfuglsang.minecraft.util.Timer;
+import org.bukkit.scheduler.BukkitRunnable;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import us.talabrek.ultimateskyblock.PluginConfig;
+import us.talabrek.ultimateskyblock.util.Scheduler;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static java.lang.Math.max;
 
 /**
  * Convenience template class for executing heavy tasks on the main thread.
@@ -23,130 +33,120 @@ import dk.lockfuglsang.minecraft.util.TimeUtil;
  * </pre>
  */
 public abstract class IncrementalRunnable extends BukkitRunnable {
-    private final uSkyBlock plugin;
+
+    private final Scheduler scheduler;
     private Runnable onCompletion;
+
     /**
      * The maximum number of consecutive ms to execute a task.
      */
-    private final int maxMs;
-    private final int maxConsecutive;
-    private final int yieldDelay;
-
-
-    /**
-     * The time of creation
-     */
-    private double tStart = 0;
+    private final Duration maxIterationTime;
+    private final long maxConsecutiveRuns;
+    private final Duration yieldDelay;
+    private Timer lifetimeTimer = null;
 
     /**
      * The time of completion.
      */
-    private double tCompleted = 0;
+    private Instant completed = null;
 
     /**
-     * Millis used in processing.
+     * Time used in processing.
      */
-    private double tUsed = 0;
+    private Duration processingTimeUsed = Duration.ZERO;
 
     /**
      * The time of the current incremental run.
      */
-    private double tRunning = 0;
+    private Timer iterationTimer = null;
 
     private volatile boolean isCancelled = false;
 
-    private int consecutiveRuns = 0;
+    private final AtomicInteger consecutiveRuns = new AtomicInteger(0);
 
     /**
      * Number of iterations in total (calls to tick())
      */
-    private volatile int iterations = 0;
+    private final AtomicInteger iterations = new AtomicInteger(0);
 
     /**
      * Number of server-ticks consumed.
      */
-    private volatile int ticks = 0;
+    private final AtomicInteger ticksConsumed = new AtomicInteger(0);
 
-    public IncrementalRunnable(uSkyBlock plugin) {
-        this(plugin, null,
-                plugin.getConfig().getInt("async.maxMs", 15),
-                plugin.getConfig().getInt("async.maxConsecutiveTicks", 20),
-                plugin.getConfig().getInt("async.yieldDelay", 2)
+    public IncrementalRunnable(@NotNull Scheduler scheduler, @NotNull PluginConfig config) {
+        this(scheduler, config, null);
+    }
+
+    public IncrementalRunnable(@NotNull Scheduler scheduler, @NotNull PluginConfig config, @Nullable Runnable onCompletion) {
+        this(scheduler, onCompletion,
+            Duration.ofMillis(config.getYamlConfig().getInt("async.maxMs", 15)),
+            config.getYamlConfig().getLong("async.maxConsecutiveTicks", 20),
+            TimeUtil.ticksAsDuration(config.getYamlConfig().getLong("async.yieldDelay", 2))
         );
     }
 
-    public IncrementalRunnable(uSkyBlock plugin, Runnable onCompletion) {
-        this(plugin, onCompletion,
-                plugin.getConfig().getInt("async.maxMs", 15),
-                plugin.getConfig().getInt("async.maxConsecutiveTicks", 20),
-                plugin.getConfig().getInt("async.yieldDelay", 2)
-        );
-    }
-
-    public IncrementalRunnable(uSkyBlock plugin, Runnable onCompletion, int maxMs, int maxConsecutive, int yieldDelay) {
-        this.plugin = plugin;
+    public IncrementalRunnable(@NotNull Scheduler scheduler, @Nullable Runnable onCompletion, @NotNull Duration maxIterationTime, long maxConsecutiveRuns, @NotNull Duration yieldDelay) {
+        this.scheduler = scheduler;
         this.onCompletion = onCompletion;
-        this.maxMs = maxMs;
-        this.maxConsecutive = maxConsecutive;
+        this.maxIterationTime = maxIterationTime;
+        this.maxConsecutiveRuns = maxConsecutiveRuns;
         this.yieldDelay = yieldDelay;
     }
 
-    protected boolean hasTime() {
-        return millisActive() < maxMs && !isCancelled;
-    }
-
     /**
-     * Used by sub-classes to see how much time they have left.
+     * Used by subclasses to see how much time they have left.
+     *
      * @return The number of ms the current #execute() has been running.
      */
-    protected long millisActive() {
-        return Math.round(t() - tRunning);
+    protected @NotNull Duration millisActive() {
+        return iterationTimer != null ? iterationTimer.elapsed() : Duration.ZERO;
     }
 
-    protected double millisLeft() {
-        return maxMs - millisActive();
+    protected @NotNull Duration millisLeft() {
+        return maxIterationTime.minus(millisActive());
     }
 
     public boolean stillTime() {
-        double millisPerTick = getTimeUsed()/(iterations != 0 ? iterations : 1);
-        return millisPerTick < millisLeft();
-    }
-
-    public uSkyBlock getPlugin() {
-        return plugin;
+        Duration millisPerTick = getProcessingTimeUsed().dividedBy(max(iterations.get(), 1));
+        return millisLeft().minus(millisPerTick).isPositive();
     }
 
     protected boolean tick() {
-        iterations++;
+        iterations.incrementAndGet();
         return stillTime();
     }
 
     /**
      * Executes a potentially heavy task
+     *
      * @return <code>true</code> if done, <code>false</code> otherwise.
      */
     protected abstract boolean execute();
 
     /**
      * Returns the number of ms the task has been active.
+     *
      * @return the number of ms the task has been active.
      */
-    public long getTimeElapsed() {
-        if (tCompleted != 0d) {
-            return Math.round(tCompleted - tStart);
+    public @NotNull Duration getTimeElapsed() {
+        if (completed != null) {
+            assert lifetimeTimer != null;
+            return Duration.between(lifetimeTimer.getStart(), completed);
         }
-        if (tStart == 0) {
-            return -1;
+        if (lifetimeTimer == null) {
+            return Duration.ZERO;
         }
-        return Math.round(t() - tStart);
+        return lifetimeTimer.elapsed();
     }
 
     /**
      * Returns the number of ms the task has been actively executing.
+     *
      * @return the number of ms the task has been actively executing.
      */
-    public double getTimeUsed() {
-        return tUsed + (tRunning != 0 ? t()-tRunning : 0);
+    public @NotNull Duration getProcessingTimeUsed() {
+        return processingTimeUsed.plus(millisActive());
     }
 
     public void cancel() {
@@ -155,33 +155,29 @@ public abstract class IncrementalRunnable extends BukkitRunnable {
 
     @Override
     public final void run() {
-        tRunning = t();
-        if (tStart == 0d) {
-            tStart = tRunning;
+        iterationTimer = Timer.start();
+        if (lifetimeTimer == null) {
+            lifetimeTimer = Timer.start();
             JobManager.addJob(this);
         }
+        int consecutiveRuns = this.consecutiveRuns.incrementAndGet();
         try {
-            consecutiveRuns++;
             if (!execute() && !isCancelled) {
-                plugin.sync(this, TimeUtil.ticksAsMillis(consecutiveRuns < maxConsecutive ? 0 : yieldDelay));
+                scheduler.sync(this, consecutiveRuns < maxConsecutiveRuns ? Duration.ZERO : yieldDelay);
             } else {
                 if (onCompletion != null && !isCancelled) {
-                    plugin.sync(onCompletion);
+                    scheduler.sync(onCompletion);
                 }
                 complete();
             }
         } finally {
-            tUsed += (t() - tRunning);
-            tRunning = 0;
-            if (consecutiveRuns > maxConsecutive) {
-                consecutiveRuns = 0;
+            processingTimeUsed = processingTimeUsed.plus(iterationTimer.elapsed());
+            iterationTimer = null;
+            if (consecutiveRuns > maxConsecutiveRuns) {
+                this.consecutiveRuns.set(0);
             }
-            ticks++;
+            ticksConsumed.incrementAndGet();
         }
-    }
-
-    private static double t() {
-        return System.nanoTime()/1000000d;
     }
 
     protected void setOnCompletion(Runnable onCompletion) {
@@ -189,11 +185,11 @@ public abstract class IncrementalRunnable extends BukkitRunnable {
     }
 
     private void complete() {
-        tCompleted = t();
+        completed = Instant.now();
         JobManager.completeJob(this);
     }
 
-    public int getTicks() {
-        return ticks;
+    public int getTicksConsumed() {
+        return ticksConsumed.get();
     }
 }

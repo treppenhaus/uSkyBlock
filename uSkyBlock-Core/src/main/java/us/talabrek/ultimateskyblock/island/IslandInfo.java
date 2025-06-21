@@ -6,6 +6,8 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.Registry;
+import org.bukkit.block.Biome;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -30,10 +32,12 @@ import us.talabrek.ultimateskyblock.util.UUIDUtil;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.ParseException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -57,7 +61,6 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
     private static final Logger log = Logger.getLogger(IslandInfo.class.getName());
     private static final Pattern OLD_LOG_PATTERN = Pattern.compile("\u00a7d\\[(?<date>[^\\]]+)\\]\u00a77 (?<msg>.*)");
     private static final int YML_VERSION = 3;
-    private static File directory = new File(".");
 
     private final uSkyBlock plugin;
     private File file;
@@ -66,13 +69,13 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
     private boolean dirty = false;
     private boolean toBeDeleted = false;
 
-    public IslandInfo(@NotNull String islandName, @NotNull uSkyBlock plugin) {
+    public IslandInfo(@NotNull String islandName, @NotNull uSkyBlock plugin, @NotNull Path islandDirectory) {
         Validate.notNull(islandName, "IslandName cannot be null");
         Validate.notEmpty(islandName, "IslandName cannot be empty");
 
         this.plugin = plugin;
         config = new YamlConfiguration();
-        file = new File(directory, islandName + ".yml");
+        file = islandDirectory.resolve(islandName + ".yml").toFile();
         name = islandName;
         if (file.exists()) {
             readConfig(config, file);
@@ -95,7 +98,7 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
             int oldMaxSize = config.getInt("maxSize");
             if (oldMaxSize > Settings.general_maxPartySize) {
                 ConfigurationSection leaderSection = config.getConfigurationSection("party.members." +
-                        UUIDUtil.asString(getLeaderUniqueId()));
+                    UUIDUtil.asString(getLeaderUniqueId()));
                 if (leaderSection != null) {
                     leaderSection.set("maxPartySizePermission", oldMaxSize);
                 }
@@ -113,10 +116,6 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
             config.set("version", 1);
         }
         save();
-    }
-
-    public static void setDirectory(@NotNull File dir) {
-        directory = dir;
     }
 
     public void resetIslandConfig(@NotNull final String leader) {
@@ -205,7 +204,7 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
         if (isLeader(member)) {
             String oldLeaderName = getLeader();
             config.set("party.leader", member.getName());
-            updateRegion |= !oldLeaderName.equals(member.getName());
+            updateRegion = !oldLeaderName.equals(member.getName());
         }
         ConfigurationSection section = config.getConfigurationSection("party.members." + member.getUniqueId());
         boolean dirty = false;
@@ -242,7 +241,7 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
                 section.set("blockLimits ", null);
                 if (!blockLimits.isEmpty()) {
                     ConfigurationSection maxBlocks = section.createSection("blockLimits");
-                    for (Map.Entry<Material,Integer> limit : blockLimits.entrySet()) {
+                    for (Map.Entry<Material, Integer> limit : blockLimits.entrySet()) {
                         maxBlocks.set(limit.getKey().name(), limit.getValue());
                     }
                 }
@@ -285,31 +284,31 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
     @Override
     public int getMaxPartySize() {
         return getMaxPartyIntValue("maxPartySizePermission",
-                plugin.getPerkLogic().getIslandPerk(getSchematicName()).getPerk().getMaxPartySize());
+            plugin.getPerkLogic().getIslandPerk(getSchematicName()).getPerk().getMaxPartySize());
     }
 
     @Override
     public int getMaxAnimals() {
         return getMaxPartyIntValue("maxAnimals",
-                plugin.getPerkLogic().getIslandPerk(getSchematicName()).getPerk().getAnimals());
+            plugin.getPerkLogic().getIslandPerk(getSchematicName()).getPerk().getAnimals());
     }
 
     @Override
     public int getMaxMonsters() {
         return getMaxPartyIntValue("maxMonsters",
-                plugin.getPerkLogic().getIslandPerk(getSchematicName()).getPerk().getMonsters());
+            plugin.getPerkLogic().getIslandPerk(getSchematicName()).getPerk().getMonsters());
     }
 
     @Override
     public int getMaxVillagers() {
         return getMaxPartyIntValue("maxVillagers",
-                plugin.getPerkLogic().getIslandPerk(getSchematicName()).getPerk().getVillagers());
+            plugin.getPerkLogic().getIslandPerk(getSchematicName()).getPerk().getVillagers());
     }
 
     @Override
     public int getMaxGolems() {
         return getMaxPartyIntValue("maxGolems",
-                plugin.getPerkLogic().getIslandPerk(getSchematicName()).getPerk().getGolems());
+            plugin.getPerkLogic().getIslandPerk(getSchematicName()).getPerk().getGolems());
     }
 
     @Override
@@ -329,7 +328,7 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
                                 blockLimitMap.computeIfAbsent(type, (k) -> {
                                     int memberMax = blockLimits.getInt(material, 0);
                                     return blockLimitMap.compute(type, (key, oldValue) ->
-                                            oldValue != null && memberMax > 0 ? Math.max(memberMax, oldValue) : null);
+                                        oldValue != null && memberMax > 0 ? Math.max(memberMax, oldValue) : null);
                                 });
                             }
                         }
@@ -385,20 +384,29 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
         return hasPerm(plugin.getPlayerDB().getUUIDFromName(playerName), perm);
     }
 
-    private boolean hasPerm(UUID uuid, String perm) {
+    public boolean hasPerm(UUID uuid, String perm) {
         return uuid.equals(getLeaderUniqueId()) || config.getBoolean("party.members." + UUIDUtil.asString(uuid) + "." + perm);
     }
 
     @Override
-    public String getBiome() {
-        return config.getString("general.biome", Settings.general_defaultBiome).toUpperCase();
+    public Biome getIslandBiome() {
+        String biomeKey = config.getString("general.biome", Settings.general_defaultBiome.getKey().getKey());
+        Biome biome = Registry.BIOME.match(biomeKey);
+        if (biome != null) {
+            return biome;
+        } else {
+            return Settings.general_defaultNetherBiome;
+        }
     }
 
-    public void setBiome(@NotNull String biome) {
-        Validate.notNull(biome, "Biome cannot be null");
-        Validate.notEmpty(biome, "Biome cannot be empty");
+    @Override
+    public String getBiomeName() {
+        return getIslandBiome().getKey().getKey();
+    }
 
-        config.set("general.biome", biome.toUpperCase());
+    public void setBiome(@NotNull Biome biome) {
+        Validate.notNull(biome, "Biome cannot be null");
+        config.set("general.biome", biome.getKey().getKey());
         save();
     }
 
@@ -415,17 +423,26 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
         save();
     }
 
+    // TODO: deprecate and replace all string-based methods
+    // TODO: unify all methods to take/return a custom Profile type that is guaranteed to contain a UUID and a name
     public boolean togglePerm(@NotNull final String playername, @NotNull final String perm) {
         Validate.notNull(playername, "Playername cannot be null");
         Validate.notEmpty(playername, "Playername cannot be empty");
+
+        UUID uuid = plugin.getPlayerDB().getUUIDFromName(playername);
+        return togglePerm(uuid, perm);
+    }
+
+    public boolean togglePerm(@NotNull final UUID playerId, @NotNull final String perm) {
+        Validate.notNull(playerId, "Playername cannot be null");
         Validate.notNull(perm, "Perm cannot be null");
         Validate.notEmpty(perm, "Perm cannot be empty");
 
-        String uuidString = UUIDUtil.asString(plugin.getPlayerDB().getUUIDFromName(playername));
+        String uuidString = UUIDUtil.asString(playerId);
         ConfigurationSection memberSection = config.getConfigurationSection("party.members." + uuidString);
         try {
             if (memberSection == null) {
-                log.info("Perms for " + playername + " failed to toggle because player is not a part of that island!");
+                log.info("Perms for " + playerId + " failed to toggle because player is not a part of that island!");
                 return false;
             }
             if (memberSection.getBoolean(perm, false)) {
@@ -436,7 +453,7 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
             save();
             return true;
         } catch (NullPointerException e) {
-            log.info("Perms for " + playername + " failed to toggle because player is not a part of that island!");
+            log.info("Perms for " + playerId + " failed to toggle because player is not a part of that island!");
             return false;
         }
     }
@@ -507,7 +524,7 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
                 sb.append(";").append(arg);
             }
         }
-        log.add(0, sb.toString());
+        log.addFirst(sb.toString());
         int logSize = plugin.getConfig().getInt("options.island.log-size", 10);
         if (log.size() > logSize) {
             log = log.subList(0, logSize);
@@ -524,16 +541,20 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
     public boolean isLeader(@NotNull OfflinePlayer target) {
         Validate.notNull(target, "Target cannot be null");
 
-        return target.getUniqueId().equals(getLeaderUniqueId());
+        return isLeader(target.getUniqueId());
     }
 
     @Override
-    public boolean isLeader(Player player) {
-        return player.getUniqueId().equals(getLeaderUniqueId());
+    public boolean isLeader(@NotNull Player player) {
+        return isLeader(player.getUniqueId());
     }
 
     public boolean isLeader(String playerName) {
         return getLeaderUniqueId().equals(plugin.getPlayerDB().getUUIDFromName(playerName));
+    }
+
+    public boolean isLeader(@NotNull UUID playerId) {
+        return getLeaderUniqueId().equals(playerId);
     }
 
     public boolean hasWarp() {
@@ -556,6 +577,7 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
 
     /**
      * Locks the island. Might get cancelled via the fired {@link IslandLockEvent}.
+     *
      * @param player {@link Player} initializing the lock.
      * @return True if the island was locked, false otherwise, e.g. when the event is cancelled.
      */
@@ -582,6 +604,7 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
 
     /**
      * Unlocks the island. Might get cancelled via the fired {@link IslandUnlockEvent}.
+     *
      * @param player {@link Player} initializing the unlock.
      * @return True if the island was unlocked, false otherwise, e.g. when the event is cancelled.
      */
@@ -906,28 +929,28 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
             log.addAll(config.getStringList("log"));
         }
         List<String> convertedList = new ArrayList<>();
-        long t = System.currentTimeMillis();
+        Instant now = Instant.now();
         for (String logEntry : log) {
             String[] split = logEntry.split(";");
             if (split.length >= 2) {
-                long then = Long.parseLong(split[0]);
+                Instant then = Instant.ofEpochMilli(Long.parseLong(split[0]));
                 String msg = split[1];
                 Object[] args = new Object[split.length - 2];
                 System.arraycopy(split, 2, args, 0, args.length);
-                convertedList.add(tr("\u00a79{1} \u00a77- {0}", TimeUtil.millisAsString(t - then), tr(msg, args)));
+                convertedList.add(tr("\u00a79{1} \u00a77- {0}", TimeUtil.durationAsString(Duration.between(then, now)), tr(msg, args)));
             } else {
                 Matcher m = OLD_LOG_PATTERN.matcher(logEntry);
                 if (m.matches()) {
                     String date = m.group("date");
-                    Date parsedDate = null;
+                    Instant parsedDate = null;
                     try {
-                        parsedDate = DateFormat.getDateInstance(3).parse(date);
+                        parsedDate = DateFormat.getDateInstance(DateFormat.SHORT).parse(date).toInstant();
                     } catch (ParseException e) {
                         // Ignore
                     }
                     String msg = m.group("msg");
                     if (parsedDate != null) {
-                        convertedList.add(tr("\u00a79{1} \u00a77- {0}", TimeUtil.millisAsString(t - parsedDate.getTime()), msg));
+                        convertedList.add(tr("\u00a79{1} \u00a77- {0}", TimeUtil.durationAsString(Duration.between(parsedDate, now)), msg));
                     } else {
                         convertedList.add(logEntry);
                     }
@@ -949,11 +972,11 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
     public Location getWarpLocation() {
         if (hasWarp()) {
             return new Location(plugin.getWorldManager().getWorld(),
-                    config.getInt("general.warpLocationX", 0),
-                    config.getInt("general.warpLocationY", 0),
-                    config.getInt("general.warpLocationZ", 0),
-                    (float) config.getDouble("general.warpYaw", 0),
-                    (float) config.getDouble("general.warpPitch", 0));
+                config.getInt("general.warpLocationX", 0),
+                config.getInt("general.warpLocationY", 0),
+                config.getInt("general.warpLocationZ", 0),
+                (float) config.getDouble("general.warpYaw", 0),
+                (float) config.getDouble("general.warpPitch", 0));
         }
         return null;
     }
@@ -968,7 +991,7 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
         String str = "\u00a7bIsland Info:\n";
         str += ChatColor.GRAY + "  - level: " + ChatColor.DARK_AQUA + String.format("%5.2f", getLevel()) + "\n";
         str += ChatColor.GRAY + "  - location: " + ChatColor.DARK_AQUA + name + "\n";
-        str += ChatColor.GRAY + "  - biome: " + ChatColor.DARK_AQUA + getBiome() + "\n";
+        str += ChatColor.GRAY + "  - biome: " + ChatColor.DARK_AQUA + getBiomeName() + "\n";
         str += ChatColor.GRAY + "  - schematic: " + ChatColor.DARK_AQUA + getSchematicName() + "\n";
         str += ChatColor.GRAY + "  - warp: " + ChatColor.DARK_AQUA + hasWarp() + "\n";
         if (hasWarp()) {
@@ -1114,6 +1137,7 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
 
     /**
      * If you need to inject a custom {@link File} for e.g. unit tests, do it here.
+     *
      * @param file Custom File
      */
     public void setFile(File file) {
@@ -1122,6 +1146,7 @@ public class IslandInfo implements us.talabrek.ultimateskyblock.api.IslandInfo {
 
     /**
      * If you need to inject a custom {@link FileConfiguration} for e.g. unit tests, do it here.
+     *
      * @param config Custom FileConfiguration
      */
     public void setConfig(FileConfiguration config) {

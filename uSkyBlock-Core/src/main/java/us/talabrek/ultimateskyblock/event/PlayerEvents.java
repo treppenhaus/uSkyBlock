@@ -1,8 +1,11 @@
 package us.talabrek.ultimateskyblock.event;
 
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import dk.lockfuglsang.minecraft.util.ItemStackUtil;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Levelled;
@@ -17,7 +20,11 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
-import org.bukkit.event.entity.*;
+import org.bukkit.event.entity.EntityChangeBlockEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
@@ -25,6 +32,7 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.projectiles.ProjectileSource;
+import org.jetbrains.annotations.NotNull;
 import us.talabrek.ultimateskyblock.Settings;
 import us.talabrek.ultimateskyblock.api.async.Callback;
 import us.talabrek.ultimateskyblock.api.event.IslandInfoEvent;
@@ -35,11 +43,21 @@ import us.talabrek.ultimateskyblock.player.PatienceTester;
 import us.talabrek.ultimateskyblock.player.PlayerInfo;
 import us.talabrek.ultimateskyblock.uSkyBlock;
 import us.talabrek.ultimateskyblock.util.LocationUtil;
+import us.talabrek.ultimateskyblock.world.WorldManager;
 
-import java.util.*;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
 
 import static dk.lockfuglsang.minecraft.po.I18nUtil.tr;
 
+@Singleton
 public class PlayerEvents implements Listener {
     private static final Set<EntityDamageEvent.DamageCause> FIRE_TRAP = new HashSet<>(Arrays.asList(
         EntityDamageEvent.DamageCause.LAVA,
@@ -47,14 +65,14 @@ public class PlayerEvents implements Listener {
         EntityDamageEvent.DamageCause.FIRE_TICK,
         EntityDamageEvent.DamageCause.HOT_FLOOR));
     private static final Random RANDOM = new Random();
-    private static final int OBSIDIAN_SPAM = 10000; // Max once every 10 seconds.
+    private static final Duration OBSIDIAN_SPAM = Duration.ofSeconds(10);
 
     private final uSkyBlock plugin;
     private final boolean visitorFallProtected;
     private final boolean visitorFireProtected;
     private final boolean visitorMonsterProtected;
     private final boolean protectLava;
-    private final Map<UUID, Long> obsidianClick = new WeakHashMap<>();
+    private final Map<UUID, Instant> obsidianClick = new HashMap<>();
     private final boolean blockLimitsEnabled;
     private final Map<Material, Material> leafSaplings = Map.of(
         Material.OAK_LEAVES, Material.OAK_SAPLING,
@@ -64,7 +82,8 @@ public class PlayerEvents implements Listener {
         Material.JUNGLE_LEAVES, Material.JUNGLE_SAPLING,
         Material.DARK_OAK_LEAVES, Material.DARK_OAK_SAPLING);
 
-    public PlayerEvents(uSkyBlock plugin) {
+    @Inject
+    public PlayerEvents(@NotNull uSkyBlock plugin) {
         this.plugin = plugin;
         FileConfiguration config = plugin.getConfig();
         visitorFallProtected = config.getBoolean("options.protection.visitors.fall", true);
@@ -98,9 +117,9 @@ public class PlayerEvents implements Listener {
             && block != null
             && block.getType() == Material.OBSIDIAN
             && !testForObsidian(block)) {
-            long now = System.currentTimeMillis();
-            Long lastClick = obsidianClick.get(player.getUniqueId());
-            if (lastClick != null && (lastClick + OBSIDIAN_SPAM) >= now) {
+            Instant now = Instant.now();
+            Instant lastClick = obsidianClick.get(player.getUniqueId());
+            if (lastClick != null && lastClick.plus(OBSIDIAN_SPAM).isAfter(now)) {
                 plugin.notifyPlayer(player, tr("\u00a74You can only convert obsidian once every 10 seconds"));
                 return;
             }
@@ -145,9 +164,9 @@ public class PlayerEvents implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onLavaPlace(final PlayerBucketEmptyEvent event) {
         if (Settings.extras_obsidianToLava && event.getBucket() == Material.LAVA_BUCKET) {
-            long now = System.currentTimeMillis();
-            Long lastClick = obsidianClick.get(event.getPlayer().getUniqueId());
-            if (lastClick != null && (now - lastClick < 50)) {
+            Instant now = Instant.now();
+            Instant lastClick = obsidianClick.get(event.getPlayer().getUniqueId());
+            if (lastClick != null && lastClick.plus(Duration.ofMillis(50)).isAfter(now)) {
                 event.setCancelled(true);
             }
         }
@@ -233,8 +252,7 @@ public class PlayerEvents implements Listener {
         if (event.getEntity() instanceof Player victim && plugin.getWorldManager().isSkyAssociatedWorld(victim.getWorld())) {
             if (event.getDamager() instanceof Player attacker) {
                 cancelMemberDamage(attacker, victim, event);
-            }
-            else if (event.getDamager() instanceof Projectile && !(event.getDamager() instanceof EnderPearl)) {
+            } else if (event.getDamager() instanceof Projectile && !(event.getDamager() instanceof EnderPearl)) {
                 ProjectileSource shooter = ((Projectile) event.getDamager()).getShooter();
                 if (shooter instanceof Player attacker) {
                     cancelMemberDamage(attacker, victim, event);
@@ -254,6 +272,12 @@ public class PlayerEvents implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerRespawn(PlayerRespawnEvent event) {
+        WorldManager wm = plugin.getWorldManager();
+        World pWorld = event.getPlayer().getWorld();
+        if (!wm.isSkyAssociatedWorld(pWorld)) {
+            return;
+        }
+
         if (Settings.extras_respawnAtIsland) {
             PlayerInfo playerInfo = plugin.getPlayerInfo(event.getPlayer());
             if (playerInfo.getHasIsland()) {
@@ -268,7 +292,7 @@ public class PlayerEvents implements Listener {
                 }
             }
         }
-        if (!Settings.extras_sendToSpawn && plugin.getWorldManager().isSkyWorld(event.getPlayer().getWorld())) {
+        if (!Settings.extras_sendToSpawn && wm.isSkyWorld(pWorld)) {
             event.setRespawnLocation(plugin.getWorldManager().getWorld().getSpawnLocation());
         }
     }
@@ -299,6 +323,7 @@ public class PlayerEvents implements Listener {
      * This EventHandler handles {@link BlockBreakEvent} to detect if a player broke leaves in the skyworld,
      * and will drop a sapling if so. This will prevent cases where the default generated tree on a new
      * island drops no saplings.
+     *
      * @param event BlockBreakEvent to handle.
      */
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
@@ -350,7 +375,7 @@ public class PlayerEvents implements Listener {
     }
 
     @EventHandler(ignoreCancelled = true)
-    public void onBlockBreak(BlockBreakEvent event){
+    public void onBlockBreak(BlockBreakEvent event) {
         if (!blockLimitsEnabled || !plugin.getWorldManager().isSkyAssociatedWorld(event.getBlock().getWorld())) {
             return; // Skip
         }

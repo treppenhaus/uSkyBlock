@@ -1,16 +1,18 @@
 package us.talabrek.ultimateskyblock.event;
 
-import dk.lockfuglsang.minecraft.po.I18nUtil;
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.World;
 import org.bukkit.block.Biome;
+import org.bukkit.entity.EntitySnapshot;
 import org.bukkit.entity.EntityType;
-import org.bukkit.entity.Ghast;
 import org.bukkit.entity.Phantom;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.WaterMob;
-import org.bukkit.entity.Wither;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
@@ -19,17 +21,16 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.material.MonsterEggs;
-import org.bukkit.material.SpawnEgg;
-import org.bukkit.metadata.FixedMetadataValue;
+import org.bukkit.inventory.meta.SpawnEggMeta;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import us.talabrek.ultimateskyblock.api.IslandInfo;
 import us.talabrek.ultimateskyblock.handler.WorldGuardHandler;
 import us.talabrek.ultimateskyblock.uSkyBlock;
 import us.talabrek.ultimateskyblock.util.LocationUtil;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
+import java.util.Collection;
+import java.util.Objects;
 import java.util.Set;
 
 import static dk.lockfuglsang.minecraft.po.I18nUtil.tr;
@@ -37,23 +38,17 @@ import static dk.lockfuglsang.minecraft.po.I18nUtil.tr;
 /**
  * Responsible for controlling spawns on uSkyBlock islands.
  */
+@Singleton
 public class SpawnEvents implements Listener {
-    private static final Set<Action> RIGHT_CLICKS = new HashSet<>(Arrays.asList(Action.RIGHT_CLICK_AIR, Action.RIGHT_CLICK_BLOCK));
-    private static final Set<CreatureSpawnEvent.SpawnReason> PLAYER_INITIATED = new HashSet<>(Arrays.asList(
-            CreatureSpawnEvent.SpawnReason.BREEDING,
-            CreatureSpawnEvent.SpawnReason.BUILD_IRONGOLEM, CreatureSpawnEvent.SpawnReason.BUILD_SNOWMAN,
-            CreatureSpawnEvent.SpawnReason.BUILD_WITHER
-    ));
-    private static final Set<CreatureSpawnEvent.SpawnReason> ADMIN_INITIATED = new HashSet<>(Arrays.asList(
-            CreatureSpawnEvent.SpawnReason.SPAWNER_EGG
-    ));
+    private static final Set<Action> RIGHT_CLICKS = Set.of(Action.RIGHT_CLICK_AIR, Action.RIGHT_CLICK_BLOCK);
 
     private final uSkyBlock plugin;
 
     private boolean phantomsInOverworld;
     private boolean phantomsInNether;
 
-    public SpawnEvents(uSkyBlock plugin) {
+    @Inject
+    public SpawnEvents(@NotNull uSkyBlock plugin) {
         this.plugin = plugin;
         phantomsInOverworld = plugin.getConfig().getBoolean("options.spawning.phantoms.overworld", true);
         phantomsInNether = plugin.getConfig().getBoolean("options.spawning.phantoms.nether", false);
@@ -61,23 +56,23 @@ public class SpawnEvents implements Listener {
 
     @EventHandler
     public void onSpawnEggEvent(PlayerInteractEvent event) {
-        Player player = event != null ? event.getPlayer() : null;
-        if (player == null || event.isCancelled() || !plugin.getWorldManager().isSkyWorld(player.getWorld())) {
+        Player player = event.getPlayer();
+        if (event.useItemInHand() == Event.Result.DENY || !plugin.getWorldManager().isSkyWorld(player.getWorld())) {
             return; // Bail out, we don't care
         }
         if (player.hasPermission("usb.mod.bypassprotection") || player.isOp()) {
             return;
         }
         ItemStack item = event.getItem();
-        if (RIGHT_CLICKS.contains(event.getAction()) && item != null && isSpawnEgg(item)) {
+        if (RIGHT_CLICKS.contains(event.getAction()) && item != null && item.getItemMeta() instanceof SpawnEggMeta) {
             if (!plugin.playerIsOnIsland(player)) {
                 event.setCancelled(true);
                 plugin.notifyPlayer(player, tr("\u00a7eYou can only use spawn-eggs on your own island."));
                 return;
             }
-            SpawnEgg spawnEgg = (SpawnEgg) item.getData();
-            checkLimits(event, spawnEgg.getSpawnedType(), player.getLocation());
-            if (event.isCancelled()) {
+
+            checkLimits(event, getSpawnEggType(item), player.getLocation());
+            if (event.useItemInHand() == Event.Result.DENY) {
                 plugin.notifyPlayer(player, tr("\u00a7cYou have reached your spawn-limit for your island."));
                 event.setUseItemInHand(Event.Result.DENY);
                 event.setUseInteractedBlock(Event.Result.DENY);
@@ -85,8 +80,20 @@ public class SpawnEvents implements Listener {
         }
     }
 
-    private boolean isSpawnEgg(ItemStack item) {
-        return item.getType().name().endsWith("_SPAWN_EGG") && item.getData() instanceof MonsterEggs;
+    private static @Nullable EntityType getSpawnEggType(@NotNull ItemStack itemStack) {
+        if (itemStack.getItemMeta() instanceof SpawnEggMeta spawnEggMeta) {
+            EntitySnapshot spawnedEntity = spawnEggMeta.getSpawnedEntity();
+            if (spawnedEntity != null) {
+                return spawnedEntity.getEntityType();
+            } else {
+                String key = itemStack.getType().getKey().toString();
+                String entityKey = key.replace("_spawn_egg", "");
+                NamespacedKey namespacedKey = Objects.requireNonNull(NamespacedKey.fromString(entityKey));
+                return Registry.ENTITY_TYPE.get(namespacedKey);
+            }
+        } else {
+            return null;
+        }
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -94,7 +101,7 @@ public class SpawnEvents implements Listener {
         if (event == null || !plugin.getWorldManager().isSkyAssociatedWorld(event.getLocation().getWorld())) {
             return; // Bail out, we don't care
         }
-        if (!event.isCancelled() && ADMIN_INITIATED.contains(event.getSpawnReason())) {
+        if (event.getSpawnReason().equals(CreatureSpawnEvent.SpawnReason.SPAWNER_EGG)) {
             return; // Allow it, the above method would have blocked it if it should be blocked.
         }
         checkLimits(event, event.getEntity().getType(), event.getLocation());
@@ -105,22 +112,15 @@ public class SpawnEvents implements Listener {
                 event.setCancelled(true);
             }
         }
-        if (event.getSpawnReason() == CreatureSpawnEvent.SpawnReason.BUILD_WITHER && event.getEntity() instanceof Wither) {
-            IslandInfo islandInfo = plugin.getIslandInfo(event.getLocation());
-            if (islandInfo != null && islandInfo.getLeader() != null) {
-                event.getEntity().setCustomName(I18nUtil.tr("{0}''s Wither", islandInfo.getLeader()));
-                event.getEntity().setMetadata("fromIsland", new FixedMetadataValue(plugin, islandInfo.getName()));
-            }
-        }
     }
 
     private boolean isPrismarineRoof(Location loc) {
-        List<Material> prismarineBlocks = Arrays.asList(Material.PRISMARINE, Material.PRISMARINE_BRICKS, Material.DARK_PRISMARINE);
+        Collection<Material> prismarineBlocks = Set.of(Material.PRISMARINE, Material.PRISMARINE_BRICKS, Material.DARK_PRISMARINE);
         return prismarineBlocks.contains(LocationUtil.findRoofBlock(loc).getType());
     }
 
     private boolean isDeepOceanBiome(Location loc) {
-        List<Biome> deepOceans = Arrays.asList(Biome.DEEP_OCEAN, Biome.DEEP_COLD_OCEAN, Biome.DEEP_FROZEN_OCEAN, Biome.DEEP_LUKEWARM_OCEAN);
+        Collection<Biome> deepOceans = Set.of(Biome.DEEP_OCEAN, Biome.DEEP_COLD_OCEAN, Biome.DEEP_FROZEN_OCEAN, Biome.DEEP_LUKEWARM_OCEAN);
         return deepOceans.contains(loc.getWorld().getBiome(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ()));
     }
 
@@ -133,12 +133,12 @@ public class SpawnEvents implements Listener {
             event.setCancelled(true); // Only allow spawning on active islands...
             return;
         }
-        if (entityType.getEntityClass().isAssignableFrom(Ghast.class) && location.getWorld().getEnvironment() != World.Environment.NETHER) {
+        if (entityType.equals(EntityType.GHAST) && location.getWorld().getEnvironment() != World.Environment.NETHER) {
             // Disallow ghasts for now...
             event.setCancelled(true);
             return;
         }
-        us.talabrek.ultimateskyblock.api.IslandInfo islandInfo = plugin.getIslandInfo(islandName);
+        IslandInfo islandInfo = plugin.getIslandInfo(islandName);
         if (islandInfo == null) {
             // Disallow spawns on inactive islands
             event.setCancelled(true);

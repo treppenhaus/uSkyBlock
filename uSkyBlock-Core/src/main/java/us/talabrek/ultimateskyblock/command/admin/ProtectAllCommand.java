@@ -1,11 +1,15 @@
 package us.talabrek.ultimateskyblock.command.admin;
 
+import com.google.inject.Inject;
 import dk.lockfuglsang.minecraft.command.AbstractCommand;
 import org.bukkit.command.CommandSender;
+import org.jetbrains.annotations.NotNull;
 import us.talabrek.ultimateskyblock.command.admin.task.ProtectAllTask;
+import us.talabrek.ultimateskyblock.island.IslandLogic;
 import us.talabrek.ultimateskyblock.uSkyBlock;
 import us.talabrek.ultimateskyblock.util.ProgressTracker;
 
+import java.time.Duration;
 import java.util.Map;
 
 import static dk.lockfuglsang.minecraft.po.I18nUtil.marktr;
@@ -16,11 +20,14 @@ import static dk.lockfuglsang.minecraft.po.I18nUtil.tr;
  */
 public class ProtectAllCommand extends AbstractCommand {
     private final uSkyBlock plugin;
+    private final IslandLogic islandLogic;
     private ProtectAllTask task;
 
-    public ProtectAllCommand(uSkyBlock plugin) {
+    @Inject
+    public ProtectAllCommand(@NotNull uSkyBlock plugin, @NotNull IslandLogic islandLogic) {
         super("protectall", "usb.admin.protectall", marktr("protects all islands (time consuming)"));
         this.plugin = plugin;
+        this.islandLogic = islandLogic;
     }
 
     private boolean isProtectAllActive() {
@@ -41,8 +48,9 @@ public class ProtectAllCommand extends AbstractCommand {
             }
         }
         sender.sendMessage(tr("\u00a7eStarting a protect-all task. It will take a while."));
-        ProgressTracker tracker = new ProgressTracker(sender, "\u00a77- Protect-All {0,number,##}% ({1}/{2}, failed:{3}, skipped:{4}) ~ {5}", 10, plugin.getConfig().getInt("async.long.feedbackEvery", 30000));
-        task = new ProtectAllTask(plugin, sender, tracker);
+        Duration feedbackFrequency = Duration.ofMillis(plugin.getConfig().getLong("async.long.feedbackEvery", 30000));
+        ProgressTracker tracker = new ProgressTracker(sender, "\u00a77- Protect-All {0,number,##}% ({1}/{2}, failed:{3}, skipped:{4}) ~ {5}", 10, feedbackFrequency);
+        task = new ProtectAllTask(plugin, sender, islandLogic.getIslandDirectory(), tracker);
         task.runTaskAsynchronously(plugin);
         return true;
     }

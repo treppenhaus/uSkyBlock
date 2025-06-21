@@ -1,31 +1,30 @@
 package us.talabrek.ultimateskyblock;
 
+import com.google.inject.Guice;
+import com.google.inject.Inject;
+import com.google.inject.Injector;
 import com.sk89q.worldguard.protection.regions.ProtectedRegion;
-import dk.lockfuglsang.minecraft.animation.AnimationHandler;
 import dk.lockfuglsang.minecraft.command.Command;
 import dk.lockfuglsang.minecraft.command.CommandManager;
 import dk.lockfuglsang.minecraft.file.FileUtil;
 import dk.lockfuglsang.minecraft.po.I18nUtil;
 import dk.lockfuglsang.minecraft.util.TimeUtil;
 import dk.lockfuglsang.minecraft.util.VersionUtil;
-import dk.lockfuglsang.minecraft.yml.YmlConfiguration;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Registry;
 import org.bukkit.block.Biome;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
-import org.bukkit.event.HandlerList;
 import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginDescriptionFile;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import us.talabrek.ultimateskyblock.api.IslandLevel;
@@ -38,34 +37,18 @@ import us.talabrek.ultimateskyblock.api.event.uSkyBlockEvent;
 import us.talabrek.ultimateskyblock.api.event.uSkyBlockScoreChangedEvent;
 import us.talabrek.ultimateskyblock.api.impl.UltimateSkyblockApi;
 import us.talabrek.ultimateskyblock.api.uSkyBlockAPI;
+import us.talabrek.ultimateskyblock.bootstrap.SkyblockApp;
+import us.talabrek.ultimateskyblock.bootstrap.SkyblockModule;
 import us.talabrek.ultimateskyblock.challenge.ChallengeLogic;
-import us.talabrek.ultimateskyblock.chat.ChatEvents;
-import us.talabrek.ultimateskyblock.chat.ChatLogic;
-import us.talabrek.ultimateskyblock.chat.IslandTalkCommand;
-import us.talabrek.ultimateskyblock.chat.PartyTalkCommand;
 import us.talabrek.ultimateskyblock.command.AdminCommand;
-import us.talabrek.ultimateskyblock.command.ChallengeCommand;
-import us.talabrek.ultimateskyblock.command.IslandCommand;
-import us.talabrek.ultimateskyblock.command.admin.DebugCommand;
 import us.talabrek.ultimateskyblock.command.admin.SetMaintenanceCommand;
-import us.talabrek.ultimateskyblock.command.island.BiomeCommand;
-import us.talabrek.ultimateskyblock.event.ExploitEvents;
-import us.talabrek.ultimateskyblock.event.GriefEvents;
-import us.talabrek.ultimateskyblock.event.InternalEvents;
-import us.talabrek.ultimateskyblock.event.ItemDropEvents;
-import us.talabrek.ultimateskyblock.event.MenuEvents;
-import us.talabrek.ultimateskyblock.event.NetherTerraFormEvents;
-import us.talabrek.ultimateskyblock.event.PlayerEvents;
-import us.talabrek.ultimateskyblock.event.SpawnEvents;
-import us.talabrek.ultimateskyblock.event.ToolMenuEvents;
-import us.talabrek.ultimateskyblock.event.WorldGuardEvents;
-import us.talabrek.ultimateskyblock.handler.AsyncWorldEditHandler;
 import us.talabrek.ultimateskyblock.handler.ConfirmHandler;
 import us.talabrek.ultimateskyblock.handler.CooldownHandler;
 import us.talabrek.ultimateskyblock.handler.WorldGuardHandler;
-import us.talabrek.ultimateskyblock.handler.placeholder.PlaceholderHandler;
 import us.talabrek.ultimateskyblock.hook.HookManager;
 import us.talabrek.ultimateskyblock.hook.placeholderapi.UsbExpansion;
+import us.talabrek.ultimateskyblock.imports.BlockRequirementConverter;
+import us.talabrek.ultimateskyblock.imports.ItemComponentConverter;
 import us.talabrek.ultimateskyblock.imports.USBImporterExecutor;
 import us.talabrek.ultimateskyblock.island.BlockLimitLogic;
 import us.talabrek.ultimateskyblock.island.IslandGenerator;
@@ -74,13 +57,10 @@ import us.talabrek.ultimateskyblock.island.IslandLocatorLogic;
 import us.talabrek.ultimateskyblock.island.IslandLogic;
 import us.talabrek.ultimateskyblock.island.LimitLogic;
 import us.talabrek.ultimateskyblock.island.OrphanLogic;
-import us.talabrek.ultimateskyblock.island.level.ChunkSnapshotLevelLogic;
 import us.talabrek.ultimateskyblock.island.level.IslandScore;
 import us.talabrek.ultimateskyblock.island.level.LevelLogic;
 import us.talabrek.ultimateskyblock.island.task.CreateIslandTask;
-import us.talabrek.ultimateskyblock.island.task.RecalculateRunnable;
 import us.talabrek.ultimateskyblock.island.task.SetBiomeTask;
-import us.talabrek.ultimateskyblock.menu.ConfigMenu;
 import us.talabrek.ultimateskyblock.menu.SkyBlockMenu;
 import us.talabrek.ultimateskyblock.player.IslandPerk;
 import us.talabrek.ultimateskyblock.player.PerkLogic;
@@ -89,19 +69,14 @@ import us.talabrek.ultimateskyblock.player.PlayerLogic;
 import us.talabrek.ultimateskyblock.player.PlayerNotifier;
 import us.talabrek.ultimateskyblock.player.PlayerPerk;
 import us.talabrek.ultimateskyblock.player.TeleportLogic;
-import us.talabrek.ultimateskyblock.signs.SignEvents;
-import us.talabrek.ultimateskyblock.signs.SignLogic;
 import us.talabrek.ultimateskyblock.util.IslandUtil;
 import us.talabrek.ultimateskyblock.util.LocationUtil;
-import us.talabrek.ultimateskyblock.util.PlayerUtil;
+import us.talabrek.ultimateskyblock.util.Scheduler;
 import us.talabrek.ultimateskyblock.util.ServerUtil;
-import us.talabrek.ultimateskyblock.uuid.BukkitPlayerDB;
-import us.talabrek.ultimateskyblock.uuid.FilePlayerDB;
-import us.talabrek.ultimateskyblock.uuid.MemoryPlayerDB;
 import us.talabrek.ultimateskyblock.uuid.PlayerDB;
 import us.talabrek.ultimateskyblock.world.WorldManager;
 
-import java.io.File;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -111,159 +86,136 @@ import java.util.logging.Level;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static dk.lockfuglsang.minecraft.po.I18nUtil.pre;
 import static dk.lockfuglsang.minecraft.po.I18nUtil.tr;
+import static java.util.Objects.requireNonNull;
 import static us.talabrek.ultimateskyblock.util.LogUtil.log;
 
 public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManager.RequirementChecker {
     private static final String CN = uSkyBlock.class.getName();
-    private static final String[][] depends = new String[][]{
-            new String[]{"Vault", "1.7.1", "optional"},
-            new String[]{"WorldEdit", "7.2.12", "optionalIf", "FastAsyncWorldEdit"},
-            new String[]{"WorldGuard", "7.0.8"},
-            new String[]{"FastAsyncWorldEdit", "2.4.3", "optional"},
-            new String[]{"Multiverse-Core", "4.3.1", "optional"},
-            new String[]{"Multiverse-Portals", "4.2.1", "optional"},
-            new String[]{"Multiverse-NetherPortals", "4.2.1", "optional"},
+    public static final String[][] depends = new String[][]{
+        new String[]{"Vault", "1.7.1", "optional"},
+        new String[]{"WorldEdit", "7.2.12", "optionalIf", "FastAsyncWorldEdit"},
+        new String[]{"WorldGuard", "7.0.8"},
+        new String[]{"FastAsyncWorldEdit", "2.4.3", "optional"},
+        new String[]{"Multiverse-Core", "4.3.1", "optional"},
+        new String[]{"Multiverse-Portals", "4.2.1", "optional"},
+        new String[]{"Multiverse-NetherPortals", "4.2.1", "optional"},
     };
     private static String missingRequirements = null;
-    private static final Random RND = new Random(System.currentTimeMillis());
+    private static final Random RND = new Random();
 
+    private SkyblockApp skyBlock;
+
+    // TODO: eventually get rid of these global references and move them to a proper API instead
+    @Inject
     private SkyBlockMenu menu;
-    private ConfigMenu configMenu;
+    @Inject
     private ChallengeLogic challengeLogic;
+    @Inject
     private EventLogic eventLogic;
+    @Inject
     private LevelLogic levelLogic;
+    @Inject
     private IslandLogic islandLogic;
+    @Inject
     private OrphanLogic orphanLogic;
+    @Inject
     private PerkLogic perkLogic;
+    @Inject
     private TeleportLogic teleportLogic;
+    @Inject
     private LimitLogic limitLogic;
-
-    /* MANAGERS */
+    @Inject
     private HookManager hookManager;
-    private MetricsManager metricsManager;
+    @Inject
     private WorldManager worldManager;
-
+    @Inject
     private IslandGenerator islandGenerator;
+    @Inject
     private PlayerNotifier notifier;
-
+    @Inject
     private USBImporterExecutor importer;
-
-    private static uSkyBlock instance;
-    // TODO: 28/06/2016 - R4zorax: These two should probably be moved to the proper classes
-    public File directoryPlayers;
-    public File directoryIslands;
-
-    private BukkitTask autoRecalculateTask;
-
+    @Inject
     private IslandLocatorLogic islandLocatorLogic;
+    @Inject
     private PlayerDB playerDB;
+    @Inject
     private ConfirmHandler confirmHandler;
-    private AnimationHandler animationHandler;
-
+    @Inject
     private CooldownHandler cooldownHandler;
+    @Inject
     private PlayerLogic playerLogic;
-    private ChatLogic chatLogic;
-
-    private volatile boolean maintenanceMode = false;
+    // TODO: don't assign value directly, but use injection instead. Currently, legacy code in PlaceholderHandler accesses it too early for injection to work.
+    @Inject
+    private PluginConfig config = new PluginConfig();
+    @Inject
     private BlockLimitLogic blockLimitLogic;
+    @Inject
+    private SkyUpdateChecker updateChecker;
+    @Inject
+    private Scheduler scheduler;
 
     private UltimateSkyblockApi api;
-    private SkyUpdateChecker updateChecker;
 
-    public uSkyBlock() {
-    }
+    private volatile boolean maintenanceMode = false;
+
+    private static uSkyBlock instance;
 
     @Override
     public void onDisable() {
         deregisterApi(api);
         api = null;
-
-        HandlerList.unregisterAll(this);
-        Bukkit.getScheduler().cancelTasks(this);
-        try {
-            WorldManager.skyBlockWorld = null; // Force a reload on config.
-        } catch (Exception e) {
-            log(Level.INFO, tr("Something went wrong saving the island and/or party data!"), e);
-        }
-        PlaceholderHandler.unregister(this);
-        if (animationHandler != null) {
-            animationHandler.stop();
-        }
-        challengeLogic.shutdown();
-        eventLogic.shutdown();
-        playerLogic.shutdown();
-        islandLogic.shutdown();
-        playerDB.shutdown(); // Must be before playerNameChangeManager!!
-        AsyncWorldEditHandler.onDisable(this);
-        DebugCommand.disableLogging(null);
+        shutdown();
     }
 
     @Override
-    public FileConfiguration getConfig() {
-        return FileUtil.getYmlConfiguration("config.yml");
+    public @NotNull FileConfiguration getConfig() {
+        return config.getYamlConfig();
+    }
+
+    private void convertConfigItemsTo1_20_6IfRequired() {
+        var converter = new ItemComponentConverter(getLogger());
+        converter.checkAndDoImport(getDataFolder());
+    }
+
+    private void convertConfigToBlockRequirements() {
+        var converter = new BlockRequirementConverter(getLogger());
+        converter.checkAndDoImport(getDataFolder());
     }
 
     @Override
     public void onEnable() {
-        WorldManager.skyBlockWorld = null; // Force a re-import or what-ever...
-        WorldManager.skyBlockNetherWorld = null;
         missingRequirements = null;
         instance = this;
-        CommandManager.registerRequirements(this);
-        FileUtil.setDataFolder(getDataFolder());
-        FileUtil.setAllwaysOverwrite("levelConfig.yml");
-        I18nUtil.setDataFolder(getDataFolder());
-        reloadConfigs();
+
+        // Converter has to run before the plugin loads its config files.
+        convertConfigItemsTo1_20_6IfRequired();
+        convertConfigToBlockRequirements();
+
+        reloadLegacyStuff();
+        startup();
 
         api = new UltimateSkyblockApi(this);
         registerApi(api);
 
-        getServer().getScheduler().runTaskLater(getInstance(), () -> {
+        getScheduler().sync(() -> {
             ServerUtil.init(uSkyBlock.this);
             if (!isRequirementsMet(Bukkit.getConsoleSender(), null)) {
                 return;
             }
-            uSkyBlock.this.getHookManager().setupMultiverse();
-            uSkyBlock.this.getHookManager().setupEconomyHook();
-            uSkyBlock.this.getHookManager().setupPermissionsHook();
-            AsyncWorldEditHandler.onEnable(uSkyBlock.this);
-            WorldGuardHandler.setupGlobal(getWorldManager().getWorld());
-            if (getWorldManager().getNetherWorld() != null) {
-                WorldGuardHandler.setupGlobal(getWorldManager().getNetherWorld());
-            }
-            registerEventsAndCommands();
-            if (!getConfig().getBoolean("importer.name2uuid.imported", false)) {
-                Bukkit.getConsoleSender().sendMessage(tr("Converting data to UUID, this make take a while!"));
-                getImporter().importUSB(Bukkit.getConsoleSender(), "name2uuid");
-            }
-            if(Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
-                log(Level.INFO, "Registering PlaceholderAPI expansion...");
-                new UsbExpansion(this).register();
-            }
+
+            delayedEnable();
 
             getServer().dispatchCommand(getServer().getConsoleSender(), "usb flush"); // See uskyblock#4
-            Bukkit.getConsoleSender().sendMessage(getVersionInfo(false));
-        }, getConfig().getLong("init.initDelay", 50L));
+        }, TimeUtil.ticksAsDuration(getConfig().getLong("init.initDelay", 50L)));
 
-        Bukkit.getScheduler().runTaskLaterAsynchronously(this, () -> {
-            this.getIslandLogic().generateTopTen(Bukkit.getConsoleSender());
-            log(Level.INFO, "generated topten playerlist");
-        }, 20);
-
-        updateChecker = new SkyUpdateChecker(this);
-        // Runs every 4 hours
-        // noinspection deprecation
-        getServer().getScheduler().scheduleAsyncRepeatingTask(this, () -> getUpdateChecker().checkForUpdates(), 0L, 288000L);
-
-        metricsManager = new MetricsManager(this);
+        getScheduler().async(() -> getUpdateChecker().checkForUpdates(), Duration.ZERO, Duration.ofHours(4));
     }
 
     public synchronized boolean isRequirementsMet(CommandSender sender, Command command, String... args) {
         if (maintenanceMode && !(
-                (command instanceof AdminCommand && args != null && args.length > 0 && args[0].equals("maintenance")) ||
-                        command instanceof SetMaintenanceCommand)) {
+            (command instanceof AdminCommand && args != null && args.length > 0 && args[0].equals("maintenance")) ||
+                command instanceof SetMaintenanceCommand)) {
             sender.sendMessage(tr("\u00a7cMAINTENANCE:\u00a7e uSkyBlock is currently in maintenance mode"));
             return false;
         }
@@ -283,7 +235,7 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
                     }
                 }
                 if (pluginManager.isPluginEnabled(pluginReq[0])) {
-                    PluginDescriptionFile desc = pluginManager.getPlugin(pluginReq[0]).getDescription();
+                    PluginDescriptionFile desc = requireNonNull(pluginManager.getPlugin(pluginReq[0])).getDescription();
                     if (VersionUtil.getVersion(desc.getVersion()).isLT(pluginReq[1])) {
                         missingRequirements += tr("\u00a7buSkyBlock\u00a7e depends on \u00a79{0}\u00a7e >= \u00a7av{1}\u00a7e but only \u00a7cv{2}\u00a7e was found!\n", pluginReq[0], pluginReq[1], desc.getVersion());
                     }
@@ -300,54 +252,14 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
         }
     }
 
-    private void createFolders() {
+    private void createDataFolder() {
         if (!getDataFolder().exists()) {
             getDataFolder().mkdirs();
         }
-        directoryPlayers = new File(getDataFolder() + File.separator + "players");
-        if (!directoryPlayers.exists()) {
-            directoryPlayers.mkdirs();
-        }
-        directoryIslands = new File(getDataFolder() + File.separator + "islands");
-        if (!directoryIslands.exists()) {
-            directoryIslands.mkdirs();
-        }
-        IslandInfo.setDirectory(directoryIslands);
     }
 
     public static uSkyBlock getInstance() {
         return uSkyBlock.instance;
-    }
-
-    public void registerEvents() {
-        final PluginManager manager = getServer().getPluginManager();
-        manager.registerEvents(new InternalEvents(this), this);
-        manager.registerEvents(new PlayerEvents(this), this);
-        manager.registerEvents(new MenuEvents(this), this);
-        manager.registerEvents(new ExploitEvents(this), this);
-        if (getConfig().getBoolean("options.protection.enabled", true)) {
-            manager.registerEvents(new GriefEvents(this), this);
-            if (getConfig().getBoolean("options.protection.item-drops", true)) {
-                manager.registerEvents(new ItemDropEvents(this), this);
-            }
-        }
-        if (getConfig().getBoolean("options.island.spawn-limits.enabled", true)) {
-            manager.registerEvents(new SpawnEvents(this), this);
-        }
-        if (getConfig().getBoolean("options.protection.visitors.block-banned-entry", true)) {
-            manager.registerEvents(new WorldGuardEvents(this), this);
-        }
-        if (Settings.nether_enabled) {
-            manager.registerEvents(new NetherTerraFormEvents(this), this);
-        }
-        if (getConfig().getBoolean("tool-menu.enabled", true)) {
-            manager.registerEvents(new ToolMenuEvents(this), this);
-        }
-        if (getConfig().getBoolean("signs.enabled", true)) {
-            manager.registerEvents(new SignEvents(this, new SignLogic(this)), this);
-        }
-        PlaceholderHandler.register(this);
-        manager.registerEvents(new ChatEvents(chatLogic, this), this);
     }
 
     public Location getSafeHomeLocation(final PlayerInfo p) {
@@ -383,13 +295,10 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
     public boolean deleteEmptyIsland(String islandName, final Runnable runner) {
         final IslandInfo islandInfo = getIslandInfo(islandName);
         if (islandInfo != null && islandInfo.getMembers().isEmpty()) {
-            islandLogic.clearIsland(islandInfo.getIslandLocation(), new Runnable() {
-                @Override
-                public void run() {
-                    postDelete(islandInfo);
-                    if (runner != null) {
-                        runner.run();
-                    }
+            islandLogic.clearIsland(islandInfo.getIslandLocation(), () -> {
+                postDelete(islandInfo);
+                if (runner != null) {
+                    runner.run();
                 }
             });
             return true;
@@ -407,13 +316,10 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
             pi = playerLogic.getPlayerInfo(member);
             islandInfo.removeMember(pi);
         }
-        islandLogic.clearIsland(islandLocation, new Runnable() {
-            @Override
-            public void run() {
-                postDelete(finalPI);
-                postDelete(islandInfo);
-                if (runner != null) runner.run();
-            }
+        islandLogic.clearIsland(islandLocation, () -> {
+            postDelete(finalPI);
+            postDelete(islandInfo);
+            if (runner != null) runner.run();
         });
     }
 
@@ -430,12 +336,7 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
             // Clear first, since the player could log out and we NEED to make sure their inventory gets cleared.
             clearPlayerInventory(player);
         }
-        islandLogic.clearIsland(next, new Runnable() {
-            @Override
-            public void run() {
-                generateIsland(player, playerInfo, next, cSchem);
-            }
-        });
+        islandLogic.clearIsland(next, () -> generateIsland(player, playerInfo, next, cSchem));
         return true;
     }
 
@@ -485,7 +386,7 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
         if (pi.getHasIsland()) {
             Location oldLoc = pi.getIslandLocation();
             if (oldLoc != null
-                    && !(newLoc.getBlockX() == oldLoc.getBlockX() && newLoc.getBlockZ() == oldLoc.getBlockZ())) {
+                && !(newLoc.getBlockX() == oldLoc.getBlockX() && newLoc.getBlockZ() == oldLoc.getBlockZ())) {
                 deleteOldIsland = true;
             }
         }
@@ -516,21 +417,19 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
 
     public boolean playerIsOnIsland(final Player player) {
         return playerIsOnOwnIsland(player)
-                || playerIsTrusted(player);
+            || playerIsTrusted(player);
     }
 
     public boolean playerIsOnOwnIsland(Player player) {
         return locationIsOnIsland(player, player.getLocation())
-                || locationIsOnNetherIsland(player, player.getLocation());
+            || locationIsOnNetherIsland(player, player.getLocation());
     }
 
     private boolean playerIsTrusted(Player player) {
         String islandName = WorldGuardHandler.getIslandNameAt(player.getLocation());
         if (islandName != null) {
             us.talabrek.ultimateskyblock.api.IslandInfo islandInfo = islandLogic.getIslandInfo(islandName);
-            if (islandInfo != null && islandInfo.getTrustees().contains(player.getName())) {
-                return true;
-            }
+            return islandInfo != null && islandInfo.isTrusted(player);
         }
         return false;
     }
@@ -573,10 +472,7 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
     }
 
     public boolean islandAtLocation(final Location loc) {
-        return ((WorldGuardHandler.getIntersectingRegions(loc).size() > 0)
-                || islandLogic.hasIsland(loc)
-        );
-
+        return ((!WorldGuardHandler.getIntersectingRegions(loc).isEmpty()) || islandLogic.hasIsland(loc));
     }
 
     public boolean islandInSpawn(final Location loc) {
@@ -603,19 +499,13 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
         return playerLogic.getPlayerInfo(playerName);
     }
 
-    public boolean setBiome(final Location loc, final String bName) {
-        Biome biome = getBiome(bName);
-        if (biome == null) return false;
-        setBiome(loc, biome);
-        return true;
+    // TODO: move these to Biome/World related classes
+    public @Nullable Biome getBiome(String biomeName) {
+        if (biomeName == null) return null;
+        return Registry.BIOME.match(biomeName);
     }
 
-    public Biome getBiome(String bName) {
-        if (bName == null) return null;
-        return BiomeCommand.BIOMES.get(bName.toLowerCase());
-    }
-
-    private void setBiome(Location loc, Biome biome) {
+    public void setBiome(Location loc, Biome biome) {
         new SetBiomeTask(this, loc, biome, null).runTask(this);
     }
 
@@ -629,9 +519,7 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
             player.sendMessage(tr("\u00a7eYou do not have access to that island-schematic!"));
             return;
         }
-        if (pi != null) {
-            pi.setIslandGenerating(true);
-        }
+        pi.setIslandGenerating(true);
         try {
             Location next = getIslandLocatorLogic().getNextIslandLocation(player);
             if (getWorldManager().isSkyWorld(player.getWorld())) {
@@ -710,10 +598,6 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
         return menu;
     }
 
-    public ConfigMenu getConfigMenu() {
-        return configMenu;
-    }
-
     public ChallengeLogic getChallengeLogic() {
         return challengeLogic;
     }
@@ -732,87 +616,57 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
 
     @Override
     public void reloadConfig() {
-        reloadConfigs();
-        registerEventsAndCommands();
+        reload();
     }
 
-    private void reloadConfigs() {
-        createFolders();
-        HandlerList.unregisterAll(this);
-        hookManager = new HookManager(this);
-        if (challengeLogic != null) {
-            challengeLogic.shutdown();
+    private void reload() {
+        shutdown();
+        reloadLegacyStuff();
+        startup();
+        delayedEnable();
+    }
+
+    private void shutdown() {
+        if (this.skyBlock != null) {
+            this.skyBlock.shutdown(this);
+            this.skyBlock = null;
         }
-        if (playerLogic != null) {
-            playerLogic.shutdown();
+        WorldManager.skyBlockWorld = null; // Force a reload on config.
+    }
+
+    private void startup() {
+        if (this.skyBlock != null) {
+            throw new IllegalStateException("Skyblock already started");
         }
-        if (islandLogic != null) {
-            islandLogic.shutdown();
-        }
-        PlaceholderHandler.unregister(this);
-        if (Settings.loadPluginConfig(getConfig())) {
-            saveConfig();
-        }
-        I18nUtil.clearCache();
+
+        WorldManager.skyBlockWorld = null; // Force a re-import or what-ever...
+        WorldManager.skyBlockNetherWorld = null;
+
+        Injector injector = Guice.createInjector(new SkyblockModule(this));
+        this.skyBlock = injector.getInstance(SkyblockApp.class);
+        injector.injectMembers(this);
+        this.skyBlock.startup(this);
+    }
+
+    private void delayedEnable() {
+        this.skyBlock.delayedEnable(this);
+    }
+
+    /**
+     * Initializes/reloads the legacy static services. This has to be done before the object-oriented services are
+     * created, as some use the static services in their constructors. This should be refactored and integrated with
+     * the new system in the future.
+     */
+    private void reloadLegacyStuff() {
+        createDataFolder();
+        CommandManager.registerRequirements(this);
+        FileUtil.setDataFolder(getDataFolder());
+        FileUtil.setAlwaysOverwrite("levelConfig.yml");
+        Settings.loadPluginConfig(new PluginConfig().getYamlConfig());
+        I18nUtil.initialize(getDataFolder(), Settings.locale);
+        saveConfig();
         // Update all of the loaded configs.
         FileUtil.reload();
-
-        String playerDbStorage = getConfig().getString("options.advanced.playerdb.storage", "yml");
-        if (playerDbStorage.equalsIgnoreCase("yml")) {
-            playerDB = new FilePlayerDB(this);
-        } else if (playerDbStorage.equalsIgnoreCase("memory")) {
-            playerDB = new MemoryPlayerDB(getConfig());
-        } else {
-            playerDB = new BukkitPlayerDB();
-        }
-
-        getServer().getPluginManager().registerEvents(playerDB, this);
-        worldManager = new WorldManager(this);
-        eventLogic = new EventLogic(this);
-        teleportLogic = new TeleportLogic(this);
-        PlayerUtil.loadConfig(playerDB, getConfig());
-        islandGenerator = new IslandGenerator(getDataFolder(), getConfig());
-        perkLogic = new PerkLogic(this, islandGenerator);
-        challengeLogic = new ChallengeLogic(FileUtil.getYmlConfiguration("challenges.yml"), this);
-        menu = new SkyBlockMenu(this, challengeLogic);
-        configMenu = new ConfigMenu(this);
-        YmlConfiguration levelConfig = FileUtil.getYmlConfiguration("levelConfig.yml");
-        // Disabled until AWE/FAWE supports 1.13
-        //levelLogic = AsyncWorldEditHandler.isAWE() ? new AweLevelLogic(this, levelConfig) : new ChunkSnapshotLevelLogic(this, levelConfig);
-        levelLogic = new ChunkSnapshotLevelLogic(this, levelConfig);
-        orphanLogic = new OrphanLogic(this);
-        islandLocatorLogic = new IslandLocatorLogic(this);
-        islandLogic = new IslandLogic(this, directoryIslands, orphanLogic);
-        limitLogic = new LimitLogic(this);
-        blockLimitLogic = new BlockLimitLogic(this);
-        notifier = new PlayerNotifier(getConfig());
-        playerLogic = new PlayerLogic(this);
-        if (autoRecalculateTask != null) {
-            autoRecalculateTask.cancel();
-        }
-        chatLogic = new ChatLogic(this);
-    }
-
-    public void registerEventsAndCommands() {
-        if (!isRequirementsMet(Bukkit.getConsoleSender(), null)) {
-            return;
-        }
-        registerEvents();
-        int refreshEveryMinute = getConfig().getInt("options.island.autoRefreshScore", 0);
-        if (refreshEveryMinute > 0) {
-            int refreshTicks = refreshEveryMinute * 1200; // Ticks per minute
-            autoRecalculateTask = new RecalculateRunnable(this).runTaskTimer(this, refreshTicks, refreshTicks);
-        } else {
-            autoRecalculateTask = null;
-        }
-        confirmHandler = new ConfirmHandler(this, getConfig().getInt("options.advanced.confirmTimeout", 10));
-        cooldownHandler = new CooldownHandler(this);
-        animationHandler = new AnimationHandler(this);
-        getCommand("island").setExecutor(new IslandCommand(this, menu));
-        getCommand("challenges").setExecutor(new ChallengeCommand(this));
-        getCommand("usb").setExecutor(new AdminCommand(this, confirmHandler, animationHandler));
-        getCommand("islandtalk").setExecutor(new IslandTalkCommand(this, chatLogic));
-        getCommand("partytalk").setExecutor(new PartyTalkCommand(this, chatLogic));
     }
 
     public IslandLogic getIslandLogic() {
@@ -840,10 +694,10 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
             return;
         }
         command = command
-                .replaceAll("\\{player\\}", Matcher.quoteReplacement(player.getName()))
-                .replaceAll("\\{playerName\\}", Matcher.quoteReplacement(player.getDisplayName()))
-                .replaceAll("\\{playername\\}", Matcher.quoteReplacement(player.getDisplayName()))
-                .replaceAll("\\{position\\}", Matcher.quoteReplacement(LocationUtil.asString(player.getLocation()))); // Figure out what this should be
+            .replaceAll("\\{player\\}", Matcher.quoteReplacement(player.getName()))
+            .replaceAll("\\{playerName\\}", Matcher.quoteReplacement(player.getDisplayName()))
+            .replaceAll("\\{playername\\}", Matcher.quoteReplacement(player.getDisplayName()))
+            .replaceAll("\\{position\\}", Matcher.quoteReplacement(LocationUtil.asString(player.getLocation()))); // Figure out what this should be
         Matcher m = Pattern.compile("^\\{p=(?<prob>0?\\.[0-9]+)\\}(.*)$").matcher(command);
         if (m.matches()) {
             double p = Double.parseDouble(m.group("prob"));
@@ -853,9 +707,9 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
             }
         }
         m = Pattern.compile("^\\{d=(?<delay>[0-9]+)\\}(.*)$").matcher(command);
-        int delay = 0;
+        Duration delay = Duration.ZERO;
         if (m.matches()) {
-            delay = Integer.parseInt(m.group("delay"));
+            delay = Duration.ofMillis(Long.parseLong(m.group("delay")));
             command = m.group(2);
         }
         if (command.contains("{party}")) {
@@ -869,21 +723,11 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
         }
     }
 
-    private void doExecCommand(final Player player, final String command, int delay) {
-        if (delay == 0) {
-            sync(new Runnable() {
-                @Override
-                public void run() {
-                    doExecCommand(player, command);
-                }
-            });
-        } else if (delay > 0) {
-            sync(new Runnable() {
-                @Override
-                public void run() {
-                    doExecCommand(player, command);
-                }
-            }, delay);
+    private void doExecCommand(final Player player, final String command, Duration delay) {
+        if (delay.isZero()) {
+            scheduler.sync(() -> doExecCommand(player, command));
+        } else if (delay.isPositive()) {
+            scheduler.sync(() -> doExecCommand(player, command), delay);
         } else {
             log(Level.INFO, "WARN: Misconfigured command found, with negative delay! " + command);
         }
@@ -964,8 +808,8 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
     public IslandRank getIslandRank(Player player) {
         PlayerInfo playerInfo = getPlayerInfo(player);
         return islandLogic != null && playerInfo != null && playerInfo.getHasIsland() ?
-                islandLogic.getRank(playerInfo.locationForParty())
-                : null;
+            islandLogic.getRank(playerInfo.locationForParty())
+            : null;
     }
 
     @Override
@@ -985,50 +829,8 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
 
     public void fireAsyncEvent(final Event event) {
         getServer().getScheduler().runTaskAsynchronously(this,
-                () -> getServer().getPluginManager().callEvent(event)
+            () -> getServer().getPluginManager().callEvent(event)
         );
-    }
-
-    public String getVersionInfo(boolean checkEnabled) {
-        PluginDescriptionFile description = getDescription();
-        String msg = pre("\n\u00a77Name: \u00a7b{0}\n", description.getName());
-        msg += pre("\u00a77Version: \u00a7b{0}\n", description.getVersion());
-        msg += pre("\u00a7Description: \u00a7b{0}\n", description.getDescription());
-        msg += pre("\u00a7Language: \u00a7b{0} ({1})\n", getConfig().get("language", "en"), I18nUtil.getI18n().getLocale());
-        msg += pre("\u00a79  State: d={0}, r={1}, i={2}, p={3}, n={4}, awe={5}\n", Settings.island_distance, Settings.island_radius,
-                islandLogic.getSize(), playerLogic.getSize(),
-                Settings.nether_enabled, AsyncWorldEditHandler.isAWE());
-        msg += pre("\u00a77Server: \u00a7e{0} {1}\n", getServer().getName(), getServer().getVersion());
-        msg += pre("\u00a79  State: online={0}, bungee={1}\n", ServerUtil.isOnlineMode(),
-                ServerUtil.isBungeeEnabled());
-        msg += pre("\u00a77------------------------------\n");
-        for (String[] dep : depends) {
-            Plugin dependency = getServer().getPluginManager().getPlugin(dep[0]);
-            if (dependency != null) {
-                String status = pre("N/A");
-                if (checkEnabled) {
-                    if (dependency.isEnabled()) {
-                        if (VersionUtil.getVersion(dependency.getDescription().getVersion()).isLT(dep[1])) {
-                            status = pre("\u00a7eWRONG-VERSION");
-                        } else {
-                            status = pre("\u00a72ENABLED");
-                        }
-                    } else {
-                        status = pre("\u00a74DISABLED");
-                    }
-                }
-                msg += pre("\u00a77\u00a7d{0} \u00a7f{1} \u00a77({2}\u00a77)\n", dependency.getName(),
-                        dependency.getDescription().getVersion(), status);
-            }
-        }
-        msg += pre("\u00a77------------------------------\n");
-
-        if (getConfig().getBoolean("plugin-updates.check", true) && getUpdateChecker().isUpdateAvailable()) {
-            msg += pre("\u00a7bA new update of uSkyBlock is available: \u00a7f{0}\n", getUpdateChecker().getLatestVersion());
-            msg += pre("\u00a7fVisit {0} to download.\n", "https://www.uskyblock.ovh/get");
-        }
-
-        return msg;
     }
 
     public PlayerDB getPlayerDB() {
@@ -1044,7 +846,7 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
 
     public void calculateScoreAsync(final Player player, String islandName, final Callback<us.talabrek.ultimateskyblock.api.model.IslandScore> callback) {
         final IslandInfo islandInfo = getIslandInfo(islandName);
-        getLevelLogic().calculateScoreAsync(islandInfo.getIslandLocation(), new Callback<IslandScore>() {
+        getLevelLogic().calculateScoreAsync(islandInfo.getIslandLocation(), new Callback<>() {
             @Override
             public void run() {
                 IslandScore score = adjustScore(getState(), islandInfo);
@@ -1101,6 +903,8 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
         return maintenanceMode;
     }
 
+    // TODO: minoneer 06.02.2025: Do we need this? It is currently very buggy and makes a lot of the logic more complex.
+
     /**
      * CAUTION! If anyone calls this with true, they MUST ensure it is later called with false,
      * or the plugin will effectively be in a locked state.
@@ -1120,41 +924,11 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, org.bukkit.command.Command command, String label, String[] args) {
+    public boolean onCommand(@NotNull CommandSender sender, org.bukkit.command.@NotNull Command command, @NotNull String label, String[] args) {
         if (!isRequirementsMet(sender, null, args)) {
             sender.sendMessage(tr("\u00a7cCommand is currently disabled!"));
         }
         return true;
-    }
-
-    public BukkitTask async(Runnable runnable) {
-        return Bukkit.getScheduler().runTaskAsynchronously(this, runnable);
-    }
-
-    public BukkitTask async(Runnable runnable, long delayMs) {
-        return Bukkit.getScheduler().runTaskLaterAsynchronously(this, runnable,
-                TimeUtil.millisAsTicks(delayMs));
-    }
-
-    public BukkitTask async(Runnable runnable, long delay, long every) {
-        return Bukkit.getScheduler().runTaskTimerAsynchronously(this, runnable,
-                TimeUtil.millisAsTicks(delay),
-                TimeUtil.millisAsTicks(every));
-    }
-
-    public BukkitTask sync(Runnable runnable) {
-        return Bukkit.getScheduler().runTask(this, runnable);
-    }
-
-    public BukkitTask sync(Runnable runnable, long delayMs) {
-        return Bukkit.getScheduler().runTaskLater(this, runnable,
-                TimeUtil.millisAsTicks(delayMs));
-    }
-
-    public BukkitTask sync(Runnable runnable, long delay, long every) {
-        return Bukkit.getScheduler().runTaskTimer(this, runnable,
-                TimeUtil.millisAsTicks(delay),
-                TimeUtil.millisAsTicks(every));
     }
 
     public void execCommands(Player player, List<String> cmdList) {
@@ -1177,5 +951,13 @@ public class uSkyBlock extends JavaPlugin implements uSkyBlockAPI, CommandManage
     private void deregisterApi(UltimateSkyblock api) {
         UltimateSkyblockProvider.deregisterPlugin();
         getServer().getServicesManager().unregister(api);
+    }
+
+    public PluginConfig getPluginConfig() {
+        return config;
+    }
+
+    public Scheduler getScheduler() {
+        return new Scheduler(this);
     }
 }

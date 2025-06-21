@@ -1,10 +1,11 @@
 package us.talabrek.ultimateskyblock.command.island;
 
+import com.google.inject.Inject;
 import dk.lockfuglsang.minecraft.po.I18nUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
 import us.talabrek.ultimateskyblock.api.event.InviteEvent;
-import us.talabrek.ultimateskyblock.command.InviteHandler;
 import us.talabrek.ultimateskyblock.island.IslandInfo;
 import us.talabrek.ultimateskyblock.player.PlayerInfo;
 import us.talabrek.ultimateskyblock.uSkyBlock;
@@ -14,11 +15,10 @@ import java.util.Map;
 import static dk.lockfuglsang.minecraft.po.I18nUtil.marktr;
 
 public class InviteCommand extends RequireIslandCommand {
-    private final InviteHandler inviteHandler;
 
-    public InviteCommand(uSkyBlock plugin, InviteHandler inviteHandler) {
+    @Inject
+    public InviteCommand(@NotNull uSkyBlock plugin) {
         super(plugin, "invite", "usb.party.invite", "oplayer", marktr("invite a player to your island"));
-        this.inviteHandler = inviteHandler;
     }
 
     @Override
@@ -40,7 +40,6 @@ public class InviteCommand extends RequireIslandCommand {
             }
         }
         if (args.length == 1) {
-            //noinspection deprecation
             Player otherPlayer = Bukkit.getPlayer(args[0]);
             if (!island.hasPerm(player, "canInviteOthers")) {
                 player.sendMessage(I18nUtil.tr("\u00a74You do not have permission to invite others to this island!"));

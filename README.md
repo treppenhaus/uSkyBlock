@@ -1,38 +1,3 @@
-# Fork!
-
-!This is a fork of uSkyBlock! and my try to make it a bit more modern.
-
-I really liked uSkyBlock and currently there aren't a lot of good SkyBlock-plugins out there. (Maybe BentoBox?)
-
-
-
-![GitHub commit activity](https://img.shields.io/github/commit-activity/m/treppenhaus/uskyblock) ![GitHub release (latest by date)](https://img.shields.io/github/v/release/treppenhaus/uskyblock) ![GitHub closed issues](https://img.shields.io/github/issues-closed/treppenhaus/uskyblock) ![GitHub issues](https://img.shields.io/github/issues/treppenhaus/uskyblock)
-
-
-## >>> [PlaceholderAPI Placeholders](https://github.com/Treppenhaus/uSkyBlock/blob/master/placeholderapi.md)
-
----
-Whats done so far:
-- PAPI Support
-- Main inventory & texts changed
-
-
-Here are the things i plan to do:
-- Support latest features (new biomes, new mobs)
-- Add new challenges (+some 1.19+ challenges)
-- Make overall look cleaner (chat messages & stuff)
-- Change colors & inventories overall
-- Add details (particle effects, rockets, titles, sounds, use new ChatComponents, make everything clickable/hoverable)
-- Add more API features
-
-# Difference to uSkyBlock
-
-(currently none, but this section will be updated)
-
-
-uSkyBlock readme below
-
-
 # uSkyBlock
 
 This is a continually updated and custom version of Talabrek's Ultimate SkyBlock plugin.
@@ -43,14 +8,12 @@ We are on [Spigot](https://www.spigotmc.org/resources/uskyblock-revived.66795/).
 
 This version depends on the following plugins:
 
-* Spigot/Paper 1.18.1-R0.1-SNAPSHOT
+* Spigot/Paper 1.19-R0.1-SNAPSHOT
 * Vault 1.7.x
-* WorldEdit 7.2.8
-* WorldGuard 7.0.6
+* WorldEdit 7.2.13
+* WorldGuard 7.0.8-SNAPSHOT
 
-## Releases 
-
-
+## Releases
 https://www.spigotmc.org/resources/uskyblock-revived.66795/history
 
 Pre-releases will end in -SNAPSHOT, and is considered **unsafe** for production servers.
@@ -66,7 +29,7 @@ dependencies to:
 <dependency>
     <groupId>ovh.uskyblock</groupId>
     <artifactId>uSkyBlock-Core</artifactId>
-    <version>3.0.0-SNAPSHOT</version>
+    <version>3.0.0</version>
 </dependency>
 ```
 
@@ -76,7 +39,7 @@ We're moving new API features towards APIv2, which is available as:
 <dependency>
     <groupId>ovh.uskyblock</groupId>
     <artifactId>uSkyBlock-APIv2</artifactId>
-    <version>3.0.0-SNAPSHOT</version>
+    <version>3.0.0</version>
 </dependency>
 ```
 

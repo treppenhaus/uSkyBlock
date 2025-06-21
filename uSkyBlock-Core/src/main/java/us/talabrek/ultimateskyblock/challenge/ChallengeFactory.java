@@ -1,11 +1,15 @@
 package us.talabrek.ultimateskyblock.challenge;
 
+import dk.lockfuglsang.minecraft.util.BlockRequirement;
+import dk.lockfuglsang.minecraft.util.ItemRequirement;
+import dk.lockfuglsang.minecraft.util.ItemStackUtil;
+import org.bukkit.Registry;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.EntityType;
 import org.bukkit.inventory.ItemStack;
-import dk.lockfuglsang.minecraft.util.ItemStackUtil;
 import us.talabrek.ultimateskyblock.util.MetaUtil;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -32,18 +36,18 @@ public class ChallengeFactory {
 
     public static ChallengeDefaults createDefaults(ConfigurationSection section) {
         return new ChallengeDefaults(
-                section.getInt("defaultResetInHours", 144),
-                section.getBoolean("requiresPreviousRank", true),
-                normalize(section.getString("repeatableColor", "&a")),
-                normalize(section.getString("finishedColor", "&2")),
-                normalize(section.getString("challengeColor", "&e")),
-                section.getInt("rankLeeway", 1),
-                section.getBoolean("enableEconomyPlugin", true),
-                section.getBoolean("broadcastCompletion", true),
-                section.getInt("radius", 10), section.getBoolean("showLockedChallengeName", true),
-                section.getInt("repeatLimit", 0),
-                section.getString("permission", "usb.challenges.permission-default")
-        );
+            Duration.ofHours(section.getLong("defaultResetInHours", 144L)),
+            section.getBoolean("requiresPreviousRank", true),
+            normalize(section.getString("repeatableColor", "&a")),
+            normalize(section.getString("finishedColor", "&2")),
+            normalize(section.getString("challengeColor", "&e")),
+            section.getInt("rankLeeway", 1),
+            section.getBoolean("enableEconomyPlugin", true),
+            section.getBoolean("broadcastCompletion", true),
+            section.getInt("radius", 10),
+            section.getBoolean("showLockedChallengeName", true),
+            section.getInt("repeatLimit", 0));
+            section.getString("permission", "usb.challenges.permission-default")
     }
 
     public static Challenge createChallenge(Rank rank, ConfigurationSection section, ChallengeDefaults defaults) {
@@ -53,13 +57,16 @@ public class ChallengeFactory {
         }
         String displayName = section.getString("name", name);
         Challenge.Type type = Challenge.Type.from(section.getString("type", "onPlayer"));
-        List<String> requiredItems = section.isList("requiredItems") ? section.getStringList("requiredItems") : Arrays.asList(section.getString("requiredItems", "").split(" "));
+        List<ItemRequirement> requiredItems = section.getStringList("requiredItems").stream()
+            .map(ItemStackUtil::createItemRequirement).toList();
+        List<BlockRequirement> requiredBlocks = section.getStringList("requiredBlocks").stream()
+            .map(ItemStackUtil::createBlockRequirement).toList();
         List<EntityMatch> requiredEntities = createEntities(section.getStringList("requiredEntities"));
-        int resetInHours = section.getInt("resetInHours", rank.getResetInHours());
+        Duration resetDuration = Duration.ofHours(section.getLong("resetInHours", rank.getResetDuration().toHours()));
         String description = section.getString("description");
         ItemStack displayItem = createItemStack(
-                section.getString("displayItem", defaults.displayItem),
-                normalize(displayName), description);
+            section.getString("displayItem", defaults.displayItem),
+            normalize(displayName), description);
         ItemStack lockedItem = section.isString("lockedDisplayItem") ? createItemStack(section.getString("lockedDisplayItem", "BARRIER"), displayName, description) : null;
         boolean takeItems = section.getBoolean("takeItems", true);
         int radius = section.getInt("radius", 10);
@@ -71,12 +78,10 @@ public class ChallengeFactory {
         List<String> requiredChallenges = section.getStringList("requiredChallenges");
         int offset = section.getInt("offset", 0);
         int repeatLimit = section.getInt("repeatLimit", 0);
-        String permission = section.getString("permission", defaults.permission);
-
         return new Challenge(name, displayName, description, permission, type,
-                requiredItems, requiredEntities, requiredChallenges, section.getDouble("requiredLevel", 0d), rank,
-                resetInHours, displayItem, section.getString("tool", null), lockedItem, offset, takeItems,
-                radius, reward, repeatReward, repeatLimit);
+            requiredItems, requiredBlocks, requiredEntities, requiredChallenges, section.getDouble("requiredLevel", 0d),
+            rank, resetDuration, displayItem, section.getString("tool", null), lockedItem, offset, takeItems,
+            radius, reward, repeatReward, repeatLimit);
     }
 
     private static List<EntityMatch> createEntities(List<String> requiredEntities) {
@@ -88,8 +93,8 @@ public class ChallengeFactory {
                 String meta = m.group("meta");
                 String countStr = m.group("count");
                 int count = countStr != null ? Integer.parseInt(countStr, 10) : 1;
-                EntityType entityType = EntityType.fromName(type);
-                Map<String, Object> map = meta != null ? MetaUtil.createMap(meta.substring(1)) : new HashMap<String, Object>(); // skip the leading ':'
+                EntityType entityType = Registry.ENTITY_TYPE.match(type);
+                Map<String, Object> map = meta != null ? MetaUtil.createMap(meta.substring(1)) : new HashMap<>(); // skip the leading ':'
                 if (entityType != null) {
                     entities.add(new EntityMatch(entityType, map, count));
                 } else {
@@ -113,12 +118,12 @@ public class ChallengeFactory {
             items.addAll(Arrays.asList(section.getString("items").split(" ")));
         }
         return new Reward(
-                section.getString("text", "\u00a74Unknown"),
-                ItemStackUtil.createItemsWithProbabilty(items),
-                section.getString("permission"),
-                section.getInt("currency", 0),
-                section.getInt("xp", 0),
-                section.getStringList("commands"));
+            section.getString("text", "\u00a74Unknown"),
+            ItemStackUtil.createItemsWithProbability(items),
+            section.getString("permission"),
+            section.getInt("currency", 0),
+            section.getInt("xp", 0),
+            section.getStringList("commands"));
     }
 
 

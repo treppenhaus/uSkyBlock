@@ -1,7 +1,7 @@
 package us.talabrek.ultimateskyblock.handler.asyncworldedit;
 
-import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.EditSession;
+import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.bukkit.BukkitWorld;
 import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormat;
 import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormats;
@@ -12,6 +12,7 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import us.talabrek.ultimateskyblock.player.PlayerPerk;
 import us.talabrek.ultimateskyblock.uSkyBlock;
+import us.talabrek.ultimateskyblock.util.Scheduler;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,16 +24,16 @@ import java.util.logging.Logger;
  */
 public class FAWEAdaptor implements AWEAdaptor {
     private static final Logger log = Logger.getLogger(FAWEAdaptor.class.getName());
-    private uSkyBlock plugin;
+    private Scheduler scheduler;
 
     @Override
     public void onEnable(uSkyBlock plugin) {
-        this.plugin = plugin;
+        this.scheduler = plugin.getScheduler();
     }
 
     @Override
     public void onDisable(uSkyBlock plugin) {
-        this.plugin = null;
+        this.scheduler = null;
     }
 
     @Override
@@ -41,7 +42,7 @@ public class FAWEAdaptor implements AWEAdaptor {
 
     @Override
     public void loadIslandSchematic(final File file, final Location origin, final PlayerPerk playerPerk) {
-        plugin.async(() -> {
+        scheduler.async(() -> {
             if (file == null || !file.exists() || !file.canRead()) {
                 log.log(Level.WARNING, "Unable to load schematic {}", file);
                 return;
@@ -55,10 +56,8 @@ public class FAWEAdaptor implements AWEAdaptor {
 
             BlockVector3 to = BlockVector3.at(origin.getBlockX(), origin.getBlockY(), origin.getBlockZ());
             EditSession editSession = getEditSession(playerPerk, origin);
-            try {
-                format
-                    .load(file)
-                    .paste(editSession, to, false);
+            try(var schematic = format.load(file)) {
+                schematic.paste(editSession, to, false);
                 editSession.flushQueue();
             } catch (IOException ex) {
                 log.log(Level.INFO, "Unable to paste schematic " + file, ex);
@@ -77,9 +76,8 @@ public class FAWEAdaptor implements AWEAdaptor {
     @Override
     public void regenerate(final Region region, final Runnable onCompletion) {
         // NOTE: Running this asynchronous MIGHT be a bit dangereous! Since pasting could interfere
-        plugin.async(() -> {
-            try {
-                EditSession editSession = createEditSession(region.getWorld(), -1);
+        scheduler.async(() -> {
+            try(var editSession = createEditSession(region.getWorld(), -1)) {
                 editSession.regenerate(region);
                 editSession.flushQueue();
             } finally {

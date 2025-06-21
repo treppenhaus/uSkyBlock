@@ -1,15 +1,19 @@
 package us.talabrek.ultimateskyblock;
 
 import dk.lockfuglsang.minecraft.po.I18nUtil;
+import dk.lockfuglsang.minecraft.util.ItemStackUtil;
+import org.bukkit.Registry;
+import org.bukkit.block.Biome;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.inventory.ItemStack;
-import us.talabrek.ultimateskyblock.command.island.BiomeCommand;
 import us.talabrek.ultimateskyblock.handler.WorldEditHandler;
-import dk.lockfuglsang.minecraft.util.ItemStackUtil;
 
+import java.time.Duration;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class Settings {
@@ -22,21 +26,22 @@ public class Settings {
     public static boolean island_removeCreaturesByTeleport;
     public static int island_protectionRange;
     public static int island_radius;
-    public static ItemStack[] island_chestItems;
+    private static List<ItemStack> island_chestItems;
     public static boolean island_addExtraItems;
     public static String[] island_extraPermissions;
     public static boolean island_allowIslandLock;
     public static boolean island_useIslandLevel;
     public static boolean island_useTopTen;
     public static int general_cooldownInfo;
-    public static int general_cooldownRestart;
-    public static int general_biomeChange;
-    public static String general_defaultBiome;
+    public static Duration general_cooldownRestart;
+    public static Duration general_biomeChange;
+    public static Biome general_defaultBiome;
+    public static Biome general_defaultNetherBiome;
     public static boolean extras_sendToSpawn;
     public static boolean extras_respawnAtIsland;
     public static boolean extras_obsidianToLava;
     public static String island_schematicName;
-    public static long island_topTenTimeout;
+    public static Duration island_topTenTimeout;
     public static boolean island_allowPvP;
     public static Locale locale = Locale.getDefault();
     public static boolean nether_enabled;
@@ -79,28 +84,23 @@ public class Settings {
             general_cooldownInfo = 60;
         }
         try {
-            general_biomeChange = config.getInt("options.general.biomeChange");
-            if (general_biomeChange < 0) {
-                general_biomeChange = 0;
+            general_biomeChange = Duration.ofSeconds(config.getInt("options.general.biomeChange"));
+            if (general_biomeChange.isNegative()) {
+                general_biomeChange = Duration.ZERO;
             }
         } catch (Exception e) {
-            general_biomeChange = 3600;
+            general_biomeChange = Duration.ofHours(1);
         }
+        general_defaultBiome = loadBiome(config, "options.general.defaultBiome", Biome.OCEAN);
+        general_defaultNetherBiome = loadBiome(config, "options.general.defaultNetherBiome", Biome.NETHER_WASTES);
+
         try {
-            general_defaultBiome = config.getString("options.general.defaultBiome");
-            if (!BiomeCommand.biomeExists(general_defaultBiome)) {
-                general_defaultBiome = "OCEAN";
+            general_cooldownRestart = Duration.ofSeconds(config.getInt("options.general.cooldownRestart"));
+            if (general_cooldownRestart.isNegative()) {
+                general_cooldownRestart = Duration.ZERO;
             }
         } catch (Exception e) {
-            general_defaultBiome = "OCEAN";
-        }
-        try {
-            general_cooldownRestart = config.getInt("options.general.cooldownRestart");
-            if (general_cooldownRestart < 0) {
-                general_cooldownRestart = 0;
-            }
-        } catch (Exception e) {
-            general_cooldownRestart = 60;
+            general_cooldownRestart = Duration.ofHours(1);
         }
         try {
             island_height = config.getInt("options.island.height");
@@ -119,9 +119,7 @@ public class Settings {
             changed = true;
         }
         general_spawnSize = config.getInt("options.general.spawnSize", 50);
-        island_chestItems = ItemStackUtil.createItemArray(ItemStackUtil.createItemList(
-                config.getStringList("options.island.chestItems")
-        ));
+        island_chestItems = ItemStackUtil.createItemList(config.getStringList("options.island.chestItems"));
 
         island_schematicName = config.getString("options.island.schematicName");
         if (island_schematicName == null || "yourschematicname".equals(island_schematicName) || "uSkyBlockDefault".equals(island_schematicName)) {
@@ -143,13 +141,12 @@ public class Settings {
         general_worldName = config.getString("options.general.worldName", "skyworld");
         island_removeCreaturesByTeleport = config.getBoolean("options.island.removeCreaturesByTeleport");
         island_allowIslandLock = config.getBoolean("options.island.allowIslandLock");
-        island_topTenTimeout = config.getInt("options.island.topTenTimeout", 7); // Every 7 minutes
+        island_topTenTimeout = Duration.ofMinutes(config.getLong("options.island.topTenTimeout", 7));
         island_allowPvP = config.getString("options.island.allowPvP", "deny").equalsIgnoreCase("allow") ||
             config.getString("options.island.allowPvP", "false").equalsIgnoreCase("true");
         Locale loc = I18nUtil.getLocale(config.getString("language", null));
         if (loc != null) {
             locale = loc;
-            I18nUtil.setLocale(locale);
         }
         nether_enabled = config.getBoolean("nether.enabled", false);
         if (nether_enabled && !WorldEditHandler.isOuterPossible()) {
@@ -158,8 +155,25 @@ public class Settings {
             changed = true;
         }
         nether_lava_level = config.getInt("nether.lava_level", config.getInt("nether.lava-level", 32));
-        nether_height = config.getInt("nether.height", island_height/2);
+        nether_height = config.getInt("nether.height", island_height / 2);
         return changed;
     }
 
+    private static Biome loadBiome(FileConfiguration config, String path, Biome defaultBiome) {
+        try {
+            String biomeKey = config.getString(path, defaultBiome.getKey().getKey());
+            Biome parsedBiome = Registry.BIOME.match(biomeKey);
+            if (parsedBiome == null) {
+                log.log(Level.WARNING, "Invalid Biome in '{0}': {1}", new Object[]{path, biomeKey});
+                parsedBiome = defaultBiome;
+            }
+            return parsedBiome;
+        } catch (Exception e) {
+            return defaultBiome;
+        }
+    }
+
+    public static List<ItemStack> getIslandChestItems() {
+        return ItemStackUtil.clone(island_chestItems);
+    }
 }

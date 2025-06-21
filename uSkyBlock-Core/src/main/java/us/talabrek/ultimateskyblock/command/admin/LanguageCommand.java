@@ -1,8 +1,10 @@
 package us.talabrek.ultimateskyblock.command.admin;
 
+import com.google.inject.Inject;
 import dk.lockfuglsang.minecraft.command.AbstractCommand;
 import dk.lockfuglsang.minecraft.po.I18nUtil;
 import org.bukkit.command.CommandSender;
+import org.jetbrains.annotations.NotNull;
 import us.talabrek.ultimateskyblock.Settings;
 import us.talabrek.ultimateskyblock.uSkyBlock;
 
@@ -22,7 +24,8 @@ import static dk.lockfuglsang.minecraft.po.I18nUtil.tr;
 public class LanguageCommand extends AbstractCommand {
     private final uSkyBlock plugin;
 
-    public LanguageCommand(uSkyBlock plugin) {
+    @Inject
+    public LanguageCommand(@NotNull uSkyBlock plugin) {
         super("lang|l", "usb.admin.lang", "language", marktr("changes the language of the plugin, and reloads"));
         this.plugin = plugin;
     }
@@ -32,7 +35,7 @@ public class LanguageCommand extends AbstractCommand {
         if (args.length == 1) {
             Locale loc = I18nUtil.getLocale(args[0]);
             Settings.locale = loc;
-            I18nUtil.clearCache();
+            I18nUtil.setLocale(loc);
             plugin.getConfig().set("language", args[0]);
             plugin.saveConfig();
             plugin.reloadConfig();
@@ -53,7 +56,7 @@ public class LanguageCommand extends AbstractCommand {
                     if (line.startsWith("---")) {
                         header = false;
                     } else if (!header && line.contains("|")) {
-                        String parts[] = line.split("\\|");
+                        String[] parts = line.split("\\|");
                         if (parts.length == 7) {
                             sb.append(tr("\u00a7f{0} \u00a77{1} \u00a79 by {2} \u00a77{3}\n", parts[1].trim(), parts[0].trim(), parts[6].trim(), parts[2].trim()));
                         }

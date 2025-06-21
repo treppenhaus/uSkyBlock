@@ -1,19 +1,24 @@
 package us.talabrek.ultimateskyblock.command.island;
 
+import com.google.inject.Inject;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
 import us.talabrek.ultimateskyblock.Settings;
 import us.talabrek.ultimateskyblock.api.event.RestartIslandEvent;
 import us.talabrek.ultimateskyblock.island.IslandInfo;
 import us.talabrek.ultimateskyblock.player.PlayerInfo;
 import us.talabrek.ultimateskyblock.uSkyBlock;
 
+import java.time.Duration;
 import java.util.Map;
 
 import static dk.lockfuglsang.minecraft.po.I18nUtil.marktr;
 import static dk.lockfuglsang.minecraft.po.I18nUtil.tr;
 
 public class RestartCommand extends RequireIslandCommand {
-    public RestartCommand(uSkyBlock plugin) {
+
+    @Inject
+    public RestartCommand(@NotNull uSkyBlock plugin) {
         super(plugin, "restart|reset", "usb.island.restart", "?schematic", marktr("delete your island and start a new one."));
         addFeaturePermission("usb.exempt.cooldown.restart", tr("exempt player from restart-cooldown"));
     }
@@ -28,9 +33,9 @@ public class RestartCommand extends RequireIslandCommand {
             }
             return true;
         }
-        int cooldown = plugin.getCooldownHandler().getCooldown(player, "restart");
-        if (cooldown > 0) {
-            player.sendMessage(tr("\u00a7cYou can restart your island in {0} seconds.", cooldown));
+        Duration cooldown = plugin.getCooldownHandler().getCooldown(player, "restart");
+        if (cooldown.isPositive()) {
+            player.sendMessage(tr("\u00a7cYou can restart your island in {0} seconds.", cooldown.toSeconds()));
             return true;
         } else {
             if (pi.isIslandGenerating()) {

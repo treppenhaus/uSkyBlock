@@ -1,25 +1,33 @@
 package us.talabrek.ultimateskyblock.command.island;
 
+import com.google.inject.Inject;
 import dk.lockfuglsang.minecraft.util.ItemStackUtil;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
 import us.talabrek.ultimateskyblock.Settings;
 import us.talabrek.ultimateskyblock.api.async.Callback;
 import us.talabrek.ultimateskyblock.api.model.BlockScore;
+import us.talabrek.ultimateskyblock.api.model.IslandScore;
 import us.talabrek.ultimateskyblock.island.IslandInfo;
 import us.talabrek.ultimateskyblock.player.PatienceTester;
 import us.talabrek.ultimateskyblock.player.PlayerInfo;
 import us.talabrek.ultimateskyblock.uSkyBlock;
-import us.talabrek.ultimateskyblock.util.LogUtil;
 
 import java.util.Map;
 import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static dk.lockfuglsang.minecraft.po.I18nUtil.marktr;
 import static dk.lockfuglsang.minecraft.po.I18nUtil.tr;
 
 public class InfoCommand extends RequireIslandCommand {
-    public InfoCommand(uSkyBlock plugin) {
+
+    private final Logger logger;
+
+    @Inject
+    public InfoCommand(@NotNull uSkyBlock plugin, @NotNull Logger logger) {
         super(plugin, "info", "usb.island.info", "?island", marktr("check your or another''s island info"));
+        this.logger = logger;
         addFeaturePermission("usb.island.info.other", tr("allows user to see others island info"));
     }
 
@@ -65,7 +73,7 @@ public class InfoCommand extends RequireIslandCommand {
             return false;
         }
         final PlayerInfo playerInfo = islandPlayer.equals(player.getName()) ? plugin.getPlayerInfo(player) : plugin.getPlayerInfo(islandPlayer);
-        final Callback<us.talabrek.ultimateskyblock.api.model.IslandScore> showInfo = new Callback<us.talabrek.ultimateskyblock.api.model.IslandScore>() {
+        final Callback<IslandScore> showInfo = new Callback<>() {
             @Override
             public void run() {
                 if (player.isOnline()) {
@@ -82,8 +90,8 @@ public class InfoCommand extends RequireIslandCommand {
                         player.sendMessage(tr("Score Count Block"));
                         for (BlockScore score : getState().getTop((currentPage - 1) * 10, 10)) {
                             player.sendMessage(score.getState().getColor() + tr("{0,number,00.00}  {1,number,#} {2}",
-                                    score.getScore(), score.getCount(),
-                                    ItemStackUtil.getItemName(score.getBlock())));
+                                score.getScore(), score.getCount(),
+                                ItemStackUtil.getBlockName(score.getBlockData())));
                         }
                         player.sendMessage(tr("\u00a7aIsland level is {0,number,###.##}", getState().getScore()));
                     }
@@ -91,16 +99,12 @@ public class InfoCommand extends RequireIslandCommand {
                 PatienceTester.stopRunning(player, "usb.island.info.active");
             }
         };
-        plugin.sync(() -> {
-            try {
-                PatienceTester.startRunning(player, "usb.island.info.active");
-                plugin.calculateScoreAsync(player, playerInfo.locationForParty(), showInfo);
-            } catch (Exception e) {
-                LogUtil.log(Level.SEVERE, "Error while calculating Island Level", e);
-            }
-        }, 1L);
+        try {
+            PatienceTester.startRunning(player, "usb.island.info.active");
+            plugin.calculateScoreAsync(player, playerInfo.locationForParty(), showInfo);
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Error while calculating Island Level", e);
+        }
         return true;
     }
-
-
 }

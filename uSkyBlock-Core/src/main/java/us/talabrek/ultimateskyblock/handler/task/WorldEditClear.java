@@ -30,7 +30,7 @@ public class WorldEditClear extends IncrementalRunnable {
     private final List<Region> regions;
 
     public WorldEditClear(uSkyBlock plugin, World world, Set<Region> borderRegions, Runnable onCompletion) {
-        super(plugin, onCompletion);
+        super(plugin.getScheduler(), plugin.getPluginConfig(), onCompletion);
         this.world = world;
         log.log(Level.FINE, "Planning regen of borders: " + borderRegions);
         regions = createRegions(borderRegions);
@@ -40,14 +40,14 @@ public class WorldEditClear extends IncrementalRunnable {
     private List<Region> createRegions(Set<Region> borderRegions) {
         List<Region> list = new ArrayList<>();
         for (Region region : borderRegions) {
-            if (region.getLength() > region.getWidth())  {
+            if (region.getLength() > region.getWidth()) {
                 // Z-axis
                 BlockVector3 min = region.getMinimumPoint();
                 BlockVector3 max = region.getMaximumPoint();
                 BlockVector3 pt = BlockVector3.at(max.getX(), max.getY(), max.getZ());
                 pt = pt.withZ(min.getBlockZ());
                 while (pt.getBlockZ() < max.getBlockZ()) {
-                    int dz = Math.min(INCREMENT, Math.abs(max.getBlockZ()-pt.getBlockZ()));
+                    int dz = Math.min(INCREMENT, Math.abs(max.getBlockZ() - pt.getBlockZ()));
                     pt = pt.add(0, 0, dz);
                     list.add(new CuboidRegion(min, pt));
                     min = min.withZ(pt.getZ());
@@ -59,7 +59,7 @@ public class WorldEditClear extends IncrementalRunnable {
                 BlockVector3 pt = BlockVector3.at(max.getX(), max.getY(), max.getZ());
                 pt = pt.withX(min.getBlockX());
                 while (pt.getBlockX() < max.getBlockX()) {
-                    int dx = Math.min(INCREMENT, Math.abs(max.getBlockX()-pt.getBlockX()));
+                    int dx = Math.min(INCREMENT, Math.abs(max.getBlockX() - pt.getBlockX()));
                     pt = pt.add(dx, 0, 0);
                     list.add(new CuboidRegion(min, pt));
                     min = min.withX(pt.getX());
@@ -73,16 +73,14 @@ public class WorldEditClear extends IncrementalRunnable {
     protected boolean execute() {
         while (!regions.isEmpty()) {
             final Region region = regions.remove(0);
-            final EditSession editSession = WorldEditHandler.createEditSession(
-                    new BukkitWorld(world), (int) region.getVolume());
-            editSession.setReorderMode(EditSession.ReorderMode.MULTI_STAGE);
-            editSession.setSideEffectApplier(SideEffectSet.defaults());
-            try {
+            try (EditSession editSession = WorldEditHandler.createEditSession(
+                new BukkitWorld(world), (int) region.getVolume())) {
+                editSession.setReorderMode(EditSession.ReorderMode.MULTI_STAGE);
+                editSession.setSideEffectApplier(SideEffectSet.defaults());
                 editSession.setBlocks(region, BlockTypes.AIR.getDefaultState());
             } catch (MaxChangedBlocksException e) {
                 log.log(Level.INFO, "Warning: we got MaxChangedBlocks from WE, please increase it!");
             }
-            editSession.flushSession();
             if (!tick()) {
                 break;
             }

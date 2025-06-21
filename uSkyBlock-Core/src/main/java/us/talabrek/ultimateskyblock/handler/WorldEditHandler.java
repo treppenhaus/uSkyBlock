@@ -16,6 +16,7 @@ import com.sk89q.worldedit.regions.Region;
 import com.sk89q.worldedit.session.ClipboardHolder;
 import com.sk89q.worldedit.util.SideEffectSet;
 import com.sk89q.worldguard.protection.regions.ProtectedRegion;
+import dk.lockfuglsang.minecraft.util.Timer;
 import org.apache.commons.lang3.Validate;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
@@ -32,6 +33,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -49,24 +51,24 @@ public class WorldEditHandler {
         }
         boolean noAir = false;
         BlockVector3 to = BlockVector3.at(origin.getBlockX(), origin.getBlockY(), origin.getBlockZ());
-        EditSession editSession = WorldEdit.getInstance().getEditSessionFactory().getEditSession(new BukkitWorld(origin.getWorld()), -1);
-        editSession.setSideEffectApplier(SideEffectSet.none());
-        ProtectedRegion region = WorldGuardHandler.getIslandRegionAt(origin);
-        if (region != null) {
-            editSession.setMask(new RegionMask(getRegion(origin.getWorld(), region)));
-        }
-        try {
+
+        try (EditSession editSession = WorldEdit.getInstance().newEditSessionBuilder()
+            .world(new BukkitWorld(origin.getWorld())).build()) {
+            editSession.setSideEffectApplier(SideEffectSet.none());
+            ProtectedRegion region = WorldGuardHandler.getIslandRegionAt(origin);
+            if (region != null) {
+                editSession.setMask(new RegionMask(getRegion(origin.getWorld(), region)));
+            }
             ClipboardFormat clipboardFormat = ClipboardFormats.findByFile(file);
             try (InputStream in = new FileInputStream(file)) {
                 Clipboard clipboard = clipboardFormat.getReader(in).read();
                 Operation operation = new ClipboardHolder(clipboard)
-                        .createPaste(editSession)
-                        .to(to)
-                        .ignoreAirBlocks(noAir)
-                        .build();
+                    .createPaste(editSession)
+                    .to(to)
+                    .ignoreAirBlocks(noAir)
+                    .build();
                 Operations.completeBlindly(operation);
             }
-            editSession.flushSession();
         } catch (IOException e) {
             log.log(Level.INFO, "Unable to paste schematic " + file, e);
         }
@@ -170,11 +172,11 @@ public class WorldEditHandler {
      *     M(x) = X mod 16, i.e. Mc = C mod 16.
      *
      * Borders:
-     *     O = A + 16 - Ma   | A > 0
-     *       = A - Ma        | A <= 0
+     *     {@code O = A + 16 - Ma   | A > 0}
+     *     {@code   = A - Ma        | A <= 0}
      *
-     *     Q = C - Mc - 1    | C > 0 && Mc != 15
-     *       = C + Mc - 16   | C < 0 && Mc != -1
+     *     {@code Q = C - Mc - 1    | C > 0 && Mc != 15}
+     *     {@code   = C + Mc - 16   | C < 0 && Mc != -1}
      * </pre>
      */
     public static Set<Region> getBorderRegions(Region region) {
@@ -200,23 +202,23 @@ public class WorldEditHandler {
         // min < minChunk < maxChunk < max
         if (minModX != 0) {
             borders.add(new CuboidRegion(region.getWorld(),
-                    BlockVector3.at(minX, minY, minZ),
-                    BlockVector3.at(minChunkX - 1, maxY, maxZ)));
+                BlockVector3.at(minX, minY, minZ),
+                BlockVector3.at(minChunkX - 1, maxY, maxZ)));
         }
         if (maxModZ != 15 && maxModZ != -1) {
             borders.add(new CuboidRegion(region.getWorld(),
-                    BlockVector3.at(minChunkX, minY, maxChunkZ + 1),
-                    BlockVector3.at(maxChunkX, maxY, maxZ)));
+                BlockVector3.at(minChunkX, minY, maxChunkZ + 1),
+                BlockVector3.at(maxChunkX, maxY, maxZ)));
         }
         if (maxModX != 15 && maxModX != -1) {
             borders.add(new CuboidRegion(region.getWorld(),
-                    BlockVector3.at(maxChunkX + 1, minY, minZ),
-                    BlockVector3.at(maxX, maxY, maxZ)));
+                BlockVector3.at(maxChunkX + 1, minY, minZ),
+                BlockVector3.at(maxX, maxY, maxZ)));
         }
         if (minModZ != 0) {
             borders.add(new CuboidRegion(region.getWorld(),
-                    BlockVector3.at(minChunkX, minY, minZ),
-                    BlockVector3.at(maxChunkX, maxY, minChunkZ - 1)));
+                BlockVector3.at(minChunkX, minY, minZ),
+                BlockVector3.at(maxChunkX, maxY, minChunkZ - 1)));
         }
         return borders;
     }
@@ -228,12 +230,12 @@ public class WorldEditHandler {
 
         log.finer("Clearing island " + region);
         uSkyBlock plugin = uSkyBlock.getInstance();
-        final long t = System.currentTimeMillis();
+        final Timer timer = Timer.start();
         final Region cube = getRegion(islandWorld, region);
         Runnable onCompletion = () -> {
-            long diff = System.currentTimeMillis() - t;
+            Duration elapsed = timer.elapsed();
             LogUtil.log(Level.INFO, String.format("Cleared island on %s in %d.%03d seconds",
-                    islandWorld.getName(), (diff / 1000), (diff % 1000)));
+                islandWorld.getName(), elapsed.toSeconds(), elapsed.toMillisPart()));
             if (afterDeletion != null) {
                 afterDeletion.run();
             }
@@ -264,7 +266,7 @@ public class WorldEditHandler {
 
     public static boolean isOuterPossible() {
         return Settings.island_distance >= Settings.island_protectionRange &&
-                ((Settings.island_distance % 32) == 0 || (Settings.island_distance - Settings.island_protectionRange) > 32);
+            ((Settings.island_distance % 32) == 0 || (Settings.island_distance - Settings.island_protectionRange) > 32);
     }
 
     public static void loadRegion(Location location) {
@@ -296,6 +298,6 @@ public class WorldEditHandler {
     }
 
     public static EditSession createEditSession(com.sk89q.worldedit.world.World bukkitWorld, int maxBlocks) {
-        return WorldEdit.getInstance().getEditSessionFactory().getEditSession(bukkitWorld, maxBlocks);
+        return WorldEdit.getInstance().newEditSessionBuilder().world(bukkitWorld).maxBlocks(maxBlocks).build();
     }
 }

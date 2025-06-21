@@ -1,5 +1,7 @@
 package us.talabrek.ultimateskyblock.signs;
 
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import dk.lockfuglsang.minecraft.util.FormatUtil;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -10,6 +12,7 @@ import org.bukkit.block.Chest;
 import org.bukkit.block.Sign;
 import org.bukkit.block.data.type.WallSign;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -20,23 +23,26 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.jetbrains.annotations.NotNull;
 import us.talabrek.ultimateskyblock.uSkyBlock;
 
 /**
  * Handles USB Signs
  */
+@Singleton
 public class SignEvents implements Listener {
     private final uSkyBlock plugin;
     private final SignLogic logic;
 
-    public SignEvents(uSkyBlock plugin, SignLogic logic) {
+    @Inject
+    public SignEvents(@NotNull uSkyBlock plugin, @NotNull SignLogic logic) {
         this.plugin = plugin;
         this.logic = logic;
     }
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerHitSign(PlayerInteractEvent e) {
-        if (e.isCancelled()
+        if (e.useInteractedBlock() == Event.Result.DENY
                 || (e.getAction() != Action.RIGHT_CLICK_BLOCK && e.getAction() != Action.LEFT_CLICK_BLOCK)
                 || e.getClickedBlock() == null
                 || !(e.getClickedBlock().getState().getBlockData() instanceof WallSign)
@@ -59,14 +65,12 @@ public class SignEvents implements Listener {
                 || !e.getLines()[0].equalsIgnoreCase("[usb]")
                 || e.getLines()[1].trim().isEmpty()
                 || !e.getPlayer().hasPermission("usb.island.signs.place")
-                || !(e.getBlock().getState() instanceof Sign)
+                || !(e.getBlock().getState() instanceof Sign sign)
                 ) {
             return;
         }
-        Sign sign = (Sign) e.getBlock().getState();
 
-        if (sign.getBlock().getState().getBlockData() instanceof WallSign) {
-            WallSign data = (WallSign) sign.getBlock().getState().getBlockData();
+        if (sign.getBlock().getState().getBlockData() instanceof WallSign data) {
             BlockFace attached = data.getFacing().getOppositeFace();
             Block wallBlock = sign.getBlock().getRelative(attached);
             if (isChest(wallBlock)) {
@@ -130,21 +134,20 @@ public class SignEvents implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onBlockHit(PlayerInteractEvent e) {
-        Player player = e.getPlayer();
-        if (e.getClickedBlock() == null
-                || e.getAction() != Action.RIGHT_CLICK_BLOCK
-                || e.getPlayer().getGameMode() != GameMode.SURVIVAL
-                || !(e.getClickedBlock().getState() instanceof Sign)
+    public void onBlockHit(PlayerInteractEvent event) {
+        Player player = event.getPlayer();
+        if (event.getClickedBlock() == null
+                || event.getAction() != Action.RIGHT_CLICK_BLOCK
+                || event.getPlayer().getGameMode() != GameMode.SURVIVAL
+                || !(event.getClickedBlock().getState() instanceof Sign sign)
                 || !player.hasPermission("usb.island.signs.use")
                 || !plugin.getWorldManager().isSkyAssociatedWorld(player.getWorld())) {
             return;
         }
 
-        Sign sign = (Sign) e.getClickedBlock().getState();
         String firstLine = FormatUtil.stripFormatting(sign.getLine(0)).trim();
         if (firstLine.startsWith("/")) {
-            e.setCancelled(true);
+            event.setCancelled(true);
             player.performCommand(firstLine.substring(1));
         }
     }

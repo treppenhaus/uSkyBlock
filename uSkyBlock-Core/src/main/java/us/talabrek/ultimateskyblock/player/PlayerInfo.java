@@ -1,7 +1,7 @@
 package us.talabrek.ultimateskyblock.player;
 
 import dk.lockfuglsang.minecraft.file.FileUtil;
-import dk.lockfuglsang.minecraft.yml.YmlConfiguration;
+import dk.lockfuglsang.minecraft.util.TimeUtil;
 import org.apache.commons.lang3.Validate;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -9,6 +9,7 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -19,12 +20,15 @@ import us.talabrek.ultimateskyblock.island.IslandInfo;
 import us.talabrek.ultimateskyblock.uSkyBlock;
 import us.talabrek.ultimateskyblock.util.LocationUtil;
 import us.talabrek.ultimateskyblock.util.LogUtil;
+import us.talabrek.ultimateskyblock.util.Scheduler;
 import us.talabrek.ultimateskyblock.util.UUIDUtil;
 import us.talabrek.ultimateskyblock.uuid.PlayerDB;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -38,10 +42,12 @@ import static dk.lockfuglsang.minecraft.po.I18nUtil.tr;
 public class PlayerInfo implements Serializable, us.talabrek.ultimateskyblock.api.PlayerInfo {
     private static final String CN = PlayerInfo.class.getName();
     private static final Logger log = Logger.getLogger(CN);
+    @Serial
     private static final long serialVersionUID = 1L;
     private static final int YML_VERSION = 1;
     private final uSkyBlock plugin;
-    private String playerName;
+    private final Scheduler scheduler;
+    private final String playerName;
     private String displayName;
     private UUID uuid;
 
@@ -49,23 +55,26 @@ public class PlayerInfo implements Serializable, us.talabrek.ultimateskyblock.ap
 
     private Location homeLocation;
 
-    private volatile FileConfiguration playerData;
-    private File playerConfigFile;
+    private final FileConfiguration playerData;
+    private final File playerConfigFile;
 
     private boolean islandGenerating = false;
     private boolean dirty = false;
 
-    public PlayerInfo(String currentPlayerName, UUID playerUUID, uSkyBlock plugin) {
+    public PlayerInfo(String currentPlayerName, UUID playerUUID, uSkyBlock plugin, Path playerDataDirectory) {
         this.plugin = plugin;
+        this.scheduler = plugin.getScheduler();
         this.uuid = playerUUID;
         this.playerName = currentPlayerName;
         // Prefer UUID over Name
-        playerConfigFile = new File(uSkyBlock.getInstance().directoryPlayers, UUIDUtil.asString(playerUUID) + ".yml");
-        File nameFile = new File(uSkyBlock.getInstance().directoryPlayers, playerName + ".yml");
+        // TODO: decouple serialization from player data.
+        // TODO: remove legacy player name support - all data should be converted by now.
+        playerConfigFile = playerDataDirectory.resolve(UUIDUtil.asString(playerUUID) + ".yml").toFile();
+        File nameFile = playerDataDirectory.resolve(playerName + ".yml").toFile();
         if (!playerConfigFile.exists() && nameFile.exists() && !currentPlayerName.equals(PlayerDB.UNKNOWN_PLAYER_NAME)) {
             nameFile.renameTo(playerConfigFile);
         }
-        playerData = new YmlConfiguration();
+        playerData = new YamlConfiguration();
         if (playerConfigFile.exists()) {
             FileUtil.readConfig(playerData, playerConfigFile);
         }
@@ -114,6 +123,10 @@ public class PlayerInfo implements Serializable, us.talabrek.ultimateskyblock.ap
     @Override
     public String getPlayerName() {
         return this.playerName;
+    }
+
+    public UUID getPlayerId() {
+        return this.uuid;
     }
 
     public void setIslandLocation(final Location l) {
@@ -216,11 +229,11 @@ public class PlayerInfo implements Serializable, us.talabrek.ultimateskyblock.ap
             this.displayName = playerData.getString("player.displayName", playerName);
             this.uuid = UUIDUtil.fromString(playerData.getString("player.uuid", null));
             this.islandLocation = new Location(uSkyBlock.getInstance().getWorldManager().getWorld(),
-                    playerData.getInt("player.islandX"), playerData.getInt("player.islandY"), playerData.getInt("player.islandZ"));
+                playerData.getInt("player.islandX"), playerData.getInt("player.islandY"), playerData.getInt("player.islandZ"));
             this.homeLocation = new Location(uSkyBlock.getInstance().getWorldManager().getWorld(),
-                    playerData.getInt("player.homeX") + 0.5, playerData.getInt("player.homeY") + 0.2, playerData.getInt("player.homeZ") + 0.5,
-                    (float) playerData.getDouble("player.homeYaw", 0.0),
-                    (float) playerData.getDouble("player.homePitch", 0.0));
+                playerData.getInt("player.homeX") + 0.5, playerData.getInt("player.homeY") + 0.2, playerData.getInt("player.homeZ") + 0.5,
+                (float) playerData.getDouble("player.homeYaw", 0.0),
+                (float) playerData.getDouble("player.homePitch", 0.0));
 
             log.exiting(CN, "loadPlayer");
             return this;
@@ -299,9 +312,7 @@ public class PlayerInfo implements Serializable, us.talabrek.ultimateskyblock.ap
 
     @Override
     public Collection<us.talabrek.ultimateskyblock.api.ChallengeCompletion> getChallenges() {
-        Collection<us.talabrek.ultimateskyblock.api.ChallengeCompletion> copy = new ArrayList<>();
-        copy.addAll(uSkyBlock.getInstance().getChallengeLogic().getChallenges(this));
-        return copy;
+        return new ArrayList<>(uSkyBlock.getInstance().getChallengeLogic().getChallenges(this));
     }
 
     @Override
@@ -399,11 +410,11 @@ public class PlayerInfo implements Serializable, us.talabrek.ultimateskyblock.ap
 
     public void onTeleport(final Player player) {
         if (isClearInventoryOnNextEntry()) {
-            uSkyBlock.getInstance().sync(() -> uSkyBlock.getInstance().clearPlayerInventory(player), 50);
+            scheduler.sync(() -> plugin.clearPlayerInventory(player), TimeUtil.ticksAsDuration(1));
         }
         List<String> pending = playerData.getStringList("pending-commands");
         if (!pending.isEmpty()) {
-            uSkyBlock.getInstance().execCommands(player, pending);
+            plugin.execCommands(player, pending);
             playerData.set("pending-commands", null);
             save();
         }

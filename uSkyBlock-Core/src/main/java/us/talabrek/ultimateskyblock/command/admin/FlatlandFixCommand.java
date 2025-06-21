@@ -1,15 +1,18 @@
 package us.talabrek.ultimateskyblock.command.admin;
 
+import com.google.inject.Inject;
 import dk.lockfuglsang.minecraft.command.AbstractCommand;
 import dk.lockfuglsang.minecraft.po.I18nUtil;
 import org.bukkit.Location;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
 import us.talabrek.ultimateskyblock.handler.WorldGuardHandler;
 import us.talabrek.ultimateskyblock.player.PlayerInfo;
 import us.talabrek.ultimateskyblock.uSkyBlock;
 import us.talabrek.ultimateskyblock.util.LocationUtil;
 
+import java.time.Duration;
 import java.util.Map;
 
 import static dk.lockfuglsang.minecraft.po.I18nUtil.marktr;
@@ -21,7 +24,8 @@ import static dk.lockfuglsang.minecraft.po.I18nUtil.tr;
 public class FlatlandFixCommand extends AbstractCommand {
     private final uSkyBlock plugin;
 
-    public FlatlandFixCommand(uSkyBlock plugin) {
+    @Inject
+    public FlatlandFixCommand(@NotNull uSkyBlock plugin) {
         super("fix-flatland", "usb.admin.remove", "?player", marktr("tries to fix the the area of flatland."));
         this.plugin = plugin;
     }
@@ -49,7 +53,7 @@ public class FlatlandFixCommand extends AbstractCommand {
 
     private boolean tryFlatlandFix(CommandSender sender, Location islandLocation) {
         // TODO: 29/12/2014 - R4zorax: Load chunks first?
-        if (!plugin.getIslandLogic().clearFlatland(sender, islandLocation, 0)) {
+        if (!plugin.getIslandLogic().clearFlatland(sender, islandLocation, Duration.ZERO)) {
             sender.sendMessage(tr("\u00a74No flatland detected at {0}''s island!", LocationUtil.asString(islandLocation)));
         }
         return true;

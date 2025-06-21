@@ -2,15 +2,15 @@ package us.talabrek.ultimateskyblock.handler.placeholder;
 
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
 import org.junit.Test;
 
-import java.util.Arrays;
-import java.util.HashSet;
+import java.util.Collection;
 import java.util.Set;
 
 import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
-import static org.junit.Assert.*;
 
 /**
  * Created by R4zorax on 26/04/2016.
@@ -18,11 +18,10 @@ import static org.junit.Assert.*;
 public class TextPlaceholderTest {
     @Test
     public void replacePlaceholders() throws Exception {
-        TextPlaceholder placeholder = new TextPlaceholder();
-        placeholder.registerPlaceholder(null, new PlaceholderAPI.PlaceholderReplacer() {
+        TextPlaceholder placeholder = new TextPlaceholder(new PlaceholderAPI.PlaceholderReplacer() {
             @Override
-            public Set<String> getPlaceholders() {
-                return new HashSet<>(Arrays.asList("usb_replaceme"));
+            public @NotNull Collection<String> getPlaceholders() {
+                return Set.of("usb_replaceme");
             }
 
             @Override
@@ -35,6 +34,4 @@ public class TextPlaceholderTest {
         assertThat(placeholder.replacePlaceholders(null, "Hi {usb_island_level}"), is("Hi {usb_island_level}"));
         assertThat(placeholder.replacePlaceholders(null, "Hi {usb_replaceme} please"), is("Hi replaced string please"));
     }
-
-
 }

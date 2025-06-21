@@ -1,47 +1,37 @@
 package us.talabrek.ultimateskyblock.block;
 
+import dk.lockfuglsang.minecraft.util.BlockRequirement;
 import dk.lockfuglsang.minecraft.util.ItemStackUtil;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
-import org.bukkit.inventory.ItemStack;
 
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static dk.lockfuglsang.minecraft.po.I18nUtil.tr;
 
 public class BlockCollection {
-    Map<Material, Map<Byte, Integer>> blockCount;
+    Map<Material, Integer> blockCount;
 
     public BlockCollection() {
         this.blockCount = new HashMap<>();
     }
 
-    public synchronized void add(Block block) {
-        Map<Byte, Integer> countMap = blockCount.getOrDefault(block.getType(), new HashMap<>());
-        int currentValue = countMap.getOrDefault(block.getData(), 0);
-        countMap.put(block.getData(), currentValue + 1);
-        blockCount.put(block.getType(), countMap);
+    public void add(Block block) {
+        int currentValue = blockCount.getOrDefault(block.getType(), 0);
+        blockCount.put(block.getType(), currentValue + 1);
     }
 
     /**
      * Returns <code>null</code> if all the items are in the BlockCollection, a String describing the missing items if it's not
-     * @param itemStacks
-     * @return
      */
-    public synchronized String diff(Collection<ItemStack> itemStacks) {
+    public String diff(List<BlockRequirement> requirements) {
         StringBuilder sb = new StringBuilder();
-        for (ItemStack item : itemStacks) {
-            int diff = 0;
-            if (item.getDurability() != 0) {
-                diff = item.getAmount() - count(item.getType(), (byte) (item.getDurability() & 0xff));
-            } else {
-                diff = item.getAmount() - count(item.getType());
-            }
+        for (BlockRequirement requirement : requirements) {
+            int diff = requirement.amount() - count(requirement.type().getMaterial());
             if (diff > 0) {
-                sb.append(tr(" \u00a7f{0}x \u00a77{1}", diff, ItemStackUtil.getItemName(item)));
+                sb.append(tr(" \u00a7f{0}x \u00a77{1}", diff, ItemStackUtil.getBlockName(requirement.type())));
             }
         }
         if (sb.toString().trim().isEmpty()) {
@@ -51,12 +41,6 @@ public class BlockCollection {
     }
 
     private int count(Material type) {
-        Map<Byte, Integer> countMap = blockCount.getOrDefault(type, Collections.emptyMap());
-        return countMap.values().stream().mapToInt(i -> i).sum();
-    }
-
-    public int count(Material type, byte data) {
-        Map<Byte, Integer> countMap = blockCount.getOrDefault(type, Collections.emptyMap());
-        return countMap.getOrDefault(data, 0);
+        return blockCount.getOrDefault(type, 0);
     }
 }

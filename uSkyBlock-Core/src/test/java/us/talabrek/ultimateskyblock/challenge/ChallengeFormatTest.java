@@ -1,17 +1,19 @@
 package us.talabrek.ultimateskyblock.challenge;
 
+import dk.lockfuglsang.minecraft.po.I18nUtil;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.mockito.hamcrest.MockitoHamcrest;
 import us.talabrek.ultimateskyblock.player.PlayerInfo;
 
+import java.io.File;
 import java.util.Arrays;
+import java.util.Locale;
 
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.argThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.Mockito.when;
 
 public class ChallengeFormatTest {
@@ -21,6 +23,7 @@ public class ChallengeFormatTest {
 
     @BeforeClass
     public static void beforeAll() {
+        I18nUtil.initialize(new File("."), Locale.ENGLISH);
         playerInfo = Mockito.mock(PlayerInfo.class);
         challengeLogic = Mockito.mock(ChallengeLogic.class);
 

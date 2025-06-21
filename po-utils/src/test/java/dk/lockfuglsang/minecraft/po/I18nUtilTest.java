@@ -7,14 +7,15 @@ import java.io.File;
 import java.net.URL;
 import java.util.Locale;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertNull;
 
 public class I18nUtilTest {
     @Before
-    public void setUp() throws Exception {
+    public void setUp() {
         URL dataFolderUrl = getClass().getClassLoader().getResource("");
-        I18nUtil.setDataFolder(new File(dataFolderUrl.getFile()));
+        I18nUtil.initialize(new File(dataFolderUrl.getFile()), Locale.ENGLISH);
     }
 
     @Test
@@ -101,7 +102,7 @@ public class I18nUtilTest {
 
         assertThat(I18nUtil.pre(TEST_STRING), is(TEST_STRING));
     }
-    
+
     @Test
     public void testPre_withFormattedString() {
         String TEST_STRING = "\u00a7bThis is a test for {0} regarding {1}.";

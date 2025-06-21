@@ -3,9 +3,14 @@ package us.talabrek.ultimateskyblock.player;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import org.bukkit.configuration.file.FileConfiguration;
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
+import us.talabrek.ultimateskyblock.PluginConfig;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -13,31 +18,33 @@ import java.util.concurrent.TimeUnit;
 /**
  * Notifier that tries to minimize spam.
  */
+@Singleton
 public class PlayerNotifier {
-    private final long maxSpam;
+    private final Duration spawnThreshold;
     private final LoadingCache<UUID, NotifyMessage> cache = CacheBuilder
-            .newBuilder()
-            .expireAfterAccess(10, TimeUnit.SECONDS)
-            .maximumSize(500)
-            .build(
-                    new CacheLoader<UUID, NotifyMessage>() {
-                        @Override
-                        public NotifyMessage load(UUID uuid) throws Exception {
-                            return new NotifyMessage(null, 0);
-                        }
-                    }
-            );
+        .newBuilder()
+        .expireAfterAccess(10, TimeUnit.SECONDS)
+        .maximumSize(500)
+        .build(
+            new CacheLoader<>() {
+                @Override
+                public @NotNull NotifyMessage load(@NotNull UUID uuid) {
+                    return new NotifyMessage(null, Instant.MIN);
+                }
+            }
+        );
 
-    public PlayerNotifier(FileConfiguration config) {
-        maxSpam = config.getInt("general.maxSpam", 3000); // every 3 seconds.
+    @Inject
+    public PlayerNotifier(@NotNull PluginConfig config) {
+        spawnThreshold = Duration.ofMillis(config.getYamlConfig().getInt("general.maxSpam", 3000)); // every 3 seconds.
     }
 
     public synchronized void notifyPlayer(Player player, String message) {
         UUID uuid = player.getUniqueId();
         try {
             NotifyMessage last = cache.get(uuid);
-            long now = System.currentTimeMillis();
-            if (now >= last.getTime() + maxSpam || !message.equals(last.getMessage())) {
+            Instant now = Instant.now();
+            if (now.isAfter(last.time().plus(spawnThreshold)) || !message.equals(last.message())) {
                 cache.put(uuid, new NotifyMessage(message, now));
                 player.sendMessage("\u00a7e" + message);
             }
@@ -46,21 +53,6 @@ public class PlayerNotifier {
         }
     }
 
-    private static class NotifyMessage {
-        private final String message;
-        private final long time;
-
-        private NotifyMessage(String message, long time) {
-            this.message = message;
-            this.time = time;
-        }
-
-        public String getMessage() {
-            return message;
-        }
-
-        public long getTime() {
-            return time;
-        }
+    private record NotifyMessage(String message, Instant time) {
     }
 }

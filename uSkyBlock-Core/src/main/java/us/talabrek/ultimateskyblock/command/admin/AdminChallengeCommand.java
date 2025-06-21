@@ -1,11 +1,13 @@
 package us.talabrek.ultimateskyblock.command.admin;
 
+import com.google.inject.Inject;
 import dk.lockfuglsang.minecraft.command.AbstractCommand;
 import dk.lockfuglsang.minecraft.command.CompositeCommand;
 import dk.lockfuglsang.minecraft.po.I18nUtil;
 import dk.lockfuglsang.minecraft.util.FormatUtil;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
 import us.talabrek.ultimateskyblock.challenge.Challenge;
 import us.talabrek.ultimateskyblock.challenge.ChallengeCompletion;
 import us.talabrek.ultimateskyblock.player.PlayerInfo;
@@ -24,7 +26,8 @@ public class AdminChallengeCommand extends CompositeCommand {
 
     private final uSkyBlock plugin;
 
-    public AdminChallengeCommand(final uSkyBlock plugin) {
+    @Inject
+    public AdminChallengeCommand(@NotNull uSkyBlock plugin) {
         super("challenge|ch", "usb.mod.challenges", "player", marktr("Manage challenges for a player"));
         this.plugin = plugin;
         add(new ChallengeCommand("complete", null, "completes the challenge for the player") {
@@ -114,7 +117,7 @@ public class AdminChallengeCommand extends CompositeCommand {
         return super.execute(sender, alias, data, args);
     }
 
-    private abstract class ChallengeCommand extends AbstractCommand {
+    private abstract static class ChallengeCommand extends AbstractCommand {
         public ChallengeCommand(String name, String permission, String description) {
             super(name, permission, "challenge", description);
         }
@@ -148,7 +151,7 @@ public class AdminChallengeCommand extends CompositeCommand {
         public boolean execute(CommandSender sender, String alias, Map<String, Object> data, String... args) {
             PlayerInfo playerInfo = (PlayerInfo) data.get("playerInfo");
             if (playerInfo != null && args.length > 0) {
-                String rankName = FormatUtil.join(Arrays.asList(args), " ");
+                String rankName = String.join(" ", args);
                 List<Challenge> challenges = plugin.getChallengeLogic().getChallengesForRank(rankName);
                 if (challenges == null || challenges.isEmpty()) {
                     sender.sendMessage(I18nUtil.tr("\u00a74No rank named {0} was found!", rankName));

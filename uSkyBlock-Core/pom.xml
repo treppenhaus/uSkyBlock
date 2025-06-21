@@ -106,12 +106,8 @@
                                     <shadedPattern>us.talabrek.ultimateskyblock.paperlib</shadedPattern>
                                 </relocation>
                                 <relocation>
-                                    <pattern>org.codehaus.plexus.util</pattern>
+                                    <pattern>net.kyori</pattern>
                                     <shadedPattern>us.talabrek.ultimateskyblock.kyori</shadedPattern>
-                                    <excludes>
-                                        <exclude>org.codehaus.plexus.util.xml.Xpp3Dom</exclude>
-                                        <exclude>org.codehaus.plexus.util.xml.pull.*</exclude>
-                                    </excludes>
                                 </relocation>
                                 <relocation>
                                     <pattern>org.apache.httpcomponents</pattern>
@@ -364,12 +360,6 @@
     </profiles>
 
     <dependencies>
-        <dependency>
-            <groupId>me.clip</groupId>
-            <artifactId>placeholderapi</artifactId>
-            <version>2.11.2</version>
-            <scope>provided</scope>
-        </dependency>
         <dependency>
             <groupId>dk.lockfuglsang.minecraft</groupId>
             <artifactId>bukkit-utils</artifactId>

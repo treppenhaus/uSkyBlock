@@ -1,9 +1,11 @@
 package us.talabrek.ultimateskyblock.command.admin;
 
+import com.google.inject.Inject;
 import dk.lockfuglsang.minecraft.command.AbstractCommand;
 import dk.lockfuglsang.minecraft.command.CompositeCommand;
 import dk.lockfuglsang.minecraft.po.I18nUtil;
 import org.bukkit.command.CommandSender;
+import org.jetbrains.annotations.NotNull;
 import us.talabrek.ultimateskyblock.island.OrphanLogic;
 import us.talabrek.ultimateskyblock.uSkyBlock;
 
@@ -16,7 +18,9 @@ import static dk.lockfuglsang.minecraft.po.I18nUtil.marktr;
  * Handles Orphans.
  */
 public class OrphanCommand extends CompositeCommand {
-    public OrphanCommand(final uSkyBlock plugin) {
+
+    @Inject
+    public OrphanCommand(@NotNull uSkyBlock plugin) {
         super("orphan", "usb.admin.orphan", marktr("manage orphans"));
         add(new AbstractCommand("count", marktr("count orphans")) {
                 @Override
@@ -41,7 +45,7 @@ public class OrphanCommand extends CompositeCommand {
                         sender.sendMessage(I18nUtil.tr("\u00a7eNo orphans currently registered."));
                     } else {
                         int pageSize = 50;
-                        int pages = (int)Math.ceil(orphans.size() / pageSize);
+                        int pages = (int) Math.ceil((double) orphans.size() / pageSize);
                         int page = args.length > 0 && args[0].matches("[0-9]+") ? Integer.parseInt(args[0], 10) : 1;
                         if (page < 1) page = 1;
                         if (page > pages) page = pages;

@@ -1,11 +1,13 @@
 package us.talabrek.ultimateskyblock.island;
 
-import dk.lockfuglsang.minecraft.yml.YmlConfiguration;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+import org.junit.Rule;
 import org.junit.Test;
-import org.mockito.invocation.InvocationOnMock;
+import org.junit.rules.TemporaryFolder;
 import org.mockito.stubbing.Answer;
 import us.talabrek.ultimateskyblock.Settings;
 import us.talabrek.ultimateskyblock.uSkyBlock;
@@ -23,12 +25,16 @@ import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsNot.not;
 import static org.hamcrest.core.IsNull.notNullValue;
-import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.any;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class IslandLocatorLogicTest {
+
+    @Rule
+    public TemporaryFolder tempFolder = new TemporaryFolder();
+
     @Test
     public void testNextIslandLocation() throws Exception {
         Settings.island_distance = 1;
@@ -46,7 +52,7 @@ public class IslandLocatorLogicTest {
     public void testNextIslandLocationReservation() throws Exception {
         Settings.island_distance = 10;
         uSkyBlock plugin = createPluginMock();
-        IslandLocatorLogic locator = new IslandLocatorLogic(plugin);
+        IslandLocatorLogic locator = new IslandLocatorLogic(plugin, tempFolder.newFolder().toPath(), mock(), mock(), mock(), mock());
         Player player = createPlayerMock();
         Location location1 = locator.getNextIslandLocation(player);
         assertThat(location1, notNullValue());
@@ -59,17 +65,14 @@ public class IslandLocatorLogicTest {
     public void testNextIslandLocationReservationConcurrency() throws Exception {
         Settings.island_distance = 10;
         uSkyBlock plugin = createPluginMock();
-        final IslandLocatorLogic locator = new IslandLocatorLogic(plugin);
+        final IslandLocatorLogic locator = new IslandLocatorLogic(plugin, tempFolder.newFolder().toPath(), mock(), mock(), mock(), mock());
         final List<Location> locations = new ArrayList<>();
         ThreadGroup threadGroup = new ThreadGroup("My");
         for (int i = 0; i < 10; i++) {
-            Thread t = new Thread(threadGroup, new Runnable() {
-                @Override
-                public void run() {
-                    Player player = createPlayerMock();
-                    Location location = locator.getNextIslandLocation(player);
-                    locations.add(location);
-                }
+            Thread t = new Thread(threadGroup, () -> {
+                Player player = createPlayerMock();
+                Location location = locator.getNextIslandLocation(player);
+                locations.add(location);
             });
             t.start();
         }
@@ -83,18 +86,13 @@ public class IslandLocatorLogicTest {
 
     private Player createPlayerMock() {
         Player player = mock(Player.class);
-        when(player.getLocation()).then(new Answer<Location>() {
-            @Override
-            public Location answer(InvocationOnMock invocationOnMock) throws Throwable {
-                return new Location(null, 100, 100, 100);
-            }
-        });
+        when(player.getLocation()).then((Answer<Location>) invocationOnMock -> new Location(null, 100, 100, 100));
         return player;
     }
 
     private uSkyBlock createPluginMock() {
         uSkyBlock plugin = mock(uSkyBlock.class);
-        YmlConfiguration config = new YmlConfiguration();
+        FileConfiguration config = new YamlConfiguration();
         when(plugin.getConfig()).thenReturn(config);
         OrphanLogic orphanLogic = mock(OrphanLogic.class);
         when(plugin.getOrphanLogic()).thenReturn(orphanLogic);
